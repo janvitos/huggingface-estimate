@@ -12,6 +12,9 @@ export const KV_VALID_QUANTS = [
   GGMLQuantizationType.IQ4_NL,
   GGMLQuantizationType.Q5_0,
   GGMLQuantizationType.Q5_1,
+  // ik_llama.cpp KV cache quantizations
+  151,  // Q8_KV
+  398,  // Q8_KV_R8
 ];
 
 /**

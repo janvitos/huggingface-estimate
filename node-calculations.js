@@ -37,13 +37,141 @@ const BPE = {
   [GGMLQuantizationType.MXFP4]: 17 / 32,
   [GGMLQuantizationType.NVFP4]: 36 / 64,
   [GGMLQuantizationType.Q1_0]: 18 / 128,
+  // ── ik_llama.cpp extensions (not in @huggingface/gguf@0.4.2) ──
+  // KV cache quantizations
+  151: 32 / 32,   // Q8_KV
+  398: 32 / 32,   // Q8_KV_R8
+  // Q8 variants (different block sizes)
+  136: 68 / 64,   // Q8_K64
+  147: 64 / 64,   // Q8_K16
+  148: 292 / 256, // Q8_K32
+  149: 292 / 256, // Q8_KR8
+  150: 140 / 128, // Q8_K128
+  399: 258 / 256, // Q8_K_R8
+  // X4 row-interleaved variants
+  97: 34 / 32,    // Q8_0_X4
+  98: 36 / 32,    // Q8_1_X4
+  99: 36 / 32,    // Q8_2_X4
+  // Interleaved GEMM variants
+  31: 18 / 32,    // Q4_0_4_4
+  32: 18 / 32,    // Q4_0_4_8
+  33: 18 / 32,    // Q4_0_8_8
+  // Bitnet ternary quantizations
+  134: 13 / 64,   // IQ1_BN
+  135: 16 / 64,   // IQ2_BN
+  // K-extension IQ variants
+  137: 76 / 256,  // IQ2_K
+  138: 110 / 256, // IQ3_K
+  139: 144 / 256, // IQ4_K
+  140: 176 / 256, // IQ5_K
+  141: 212 / 256, // IQ6_K
+  144: 136 / 256, // IQ4_KS
+  145: 70 / 256,  // IQ2_KS
+  146: 128 / 256, // IQ4_KSS
+  152: 168 / 256, // IQ5_KS
+  153: 68 / 256,  // IQ2_KT
+  154: 100 / 256, // IQ3_KT
+  155: 128 / 256, // IQ4_KT
+  156: 102 / 256, // IQ3_KS
+  157: 86 / 256,  // IQ2_KL
+  158: 56 / 256,  // IQ1_KT
+  // Row-interleaved R4 variants
+  202: 18 / 32,   // Q4_0_R8
+  206: 22 / 32,   // Q5_0_R4
+  208: 34 / 32,   // Q8_0_R8
+  210: 84 / 256,  // Q2_K_R4
+  211: 110 / 256, // Q3_K_R4
+  212: 144 / 256, // Q4_K_R4
+  213: 176 / 256, // Q5_K_R4
+  214: 210 / 256, // Q6_K_R4
+  216: 66 / 256,  // IQ2_XXS_R4
+  217: 74 / 256,  // IQ2_XS_R4
+  218: 98 / 256,  // IQ3_XXS_R4
+  219: 6 / 32,    // IQ1_S_R4
+  220: 18 / 32,   // IQ4_NL_R4
+  221: 110 / 256, // IQ3_S_R4
+  222: 82 / 256,  // IQ2_S_R4
+  223: 136 / 256, // IQ4_XS_R8
+  229: 7 / 32,    // IQ1_M_R4
+  233: 26 / 32,   // Q6_0_R4
+  335: 16 / 64,   // IQ2_BN_R4
+  337: 76 / 256,  // IQ2_K_R4
+  338: 110 / 256, // IQ3_K_R4
+  339: 144 / 256, // IQ4_K_R4
+  340: 176 / 256, // IQ5_K_R4
+  344: 136 / 256, // IQ4_KS_R4
+  352: 168 / 256, // IQ5_KS_R4
+  // Other
+  230: 2 / 1,     // BF16_R16
 };
 
 // Quantization type names for display
+// Auto-populated from @huggingface/gguf package, plus manual entries for ik_llama.cpp extensions
 export const QUANT_NAMES = {};
 for (const [key, val] of Object.entries(GGMLQuantizationType)) {
   if (typeof val === 'number') QUANT_NAMES[val] = key;
 }
+// ── ik_llama.cpp extension names (labeled for clarity) ──
+const IK_LLAMA_QUANT_NAMES = {
+  151: 'Q8_KV (ik_llama)',
+  398: 'Q8_KV_R8 (ik_llama)',
+  136: 'Q8_K64 (ik_llama)',
+  147: 'Q8_K16 (ik_llama)',
+  148: 'Q8_K32 (ik_llama)',
+  149: 'Q8_KR8 (ik_llama)',
+  150: 'Q8_K128 (ik_llama)',
+  399: 'Q8_K_R8 (ik_llama)',
+  97: 'Q8_0_X4 (ik_llama)',
+  98: 'Q8_1_X4 (ik_llama)',
+  99: 'Q8_2_X4 (ik_llama)',
+  31: 'Q4_0_4_4 (ik_llama)',
+  32: 'Q4_0_4_8 (ik_llama)',
+  33: 'Q4_0_8_8 (ik_llama)',
+  134: 'IQ1_BN (ik_llama)',
+  135: 'IQ2_BN (ik_llama)',
+  137: 'IQ2_K (ik_llama)',
+  138: 'IQ3_K (ik_llama)',
+  139: 'IQ4_K (ik_llama)',
+  140: 'IQ5_K (ik_llama)',
+  141: 'IQ6_K (ik_llama)',
+  144: 'IQ4_KS (ik_llama)',
+  145: 'IQ2_KS (ik_llama)',
+  146: 'IQ4_KSS (ik_llama)',
+  152: 'IQ5_KS (ik_llama)',
+  153: 'IQ2_KT (ik_llama)',
+  154: 'IQ3_KT (ik_llama)',
+  155: 'IQ4_KT (ik_llama)',
+  156: 'IQ3_KS (ik_llama)',
+  157: 'IQ2_KL (ik_llama)',
+  158: 'IQ1_KT (ik_llama)',
+  202: 'Q4_0_R8 (ik_llama)',
+  206: 'Q5_0_R4 (ik_llama)',
+  208: 'Q8_0_R8 (ik_llama)',
+  210: 'Q2_K_R4 (ik_llama)',
+  211: 'Q3_K_R4 (ik_llama)',
+  212: 'Q4_K_R4 (ik_llama)',
+  213: 'Q5_K_R4 (ik_llama)',
+  214: 'Q6_K_R4 (ik_llama)',
+  216: 'IQ2_XXS_R4 (ik_llama)',
+  217: 'IQ2_XS_R4 (ik_llama)',
+  218: 'IQ3_XXS_R4 (ik_llama)',
+  219: 'IQ1_S_R4 (ik_llama)',
+  220: 'IQ4_NL_R4 (ik_llama)',
+  221: 'IQ3_S_R4 (ik_llama)',
+  222: 'IQ2_S_R4 (ik_llama)',
+  223: 'IQ4_XS_R8 (ik_llama)',
+  229: 'IQ1_M_R4 (ik_llama)',
+  233: 'Q6_0_R4 (ik_llama)',
+  335: 'IQ2_BN_R4 (ik_llama)',
+  337: 'IQ2_K_R4 (ik_llama)',
+  338: 'IQ3_K_R4 (ik_llama)',
+  339: 'IQ4_K_R4 (ik_llama)',
+  340: 'IQ5_K_R4 (ik_llama)',
+  344: 'IQ4_KS_R4 (ik_llama)',
+  352: 'IQ5_KS_R4 (ik_llama)',
+  230: 'BF16_R16 (ik_llama)',
+};
+Object.assign(QUANT_NAMES, IK_LLAMA_QUANT_NAMES);
 
 // ── Standalone handler functions (reused by multiple architectures) ──
 function llamaKvCache(meta, ctxSize, kvTypeK, kvTypeV) {
