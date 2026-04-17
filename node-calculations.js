@@ -109,6 +109,25 @@ function llamaMoe(meta, tensorInfos) {
 
 const LLAMA_TENSOR_GROUPS = { expert: ['*ffn_gate_exps*', '*ffn_up_exps*', '*ffn_down_exps*'], router: ['*ffn_gate_inp*'], shared: ['*ffn_gate_shexp*', '*ffn_up_shexp*', '*ffn_down_shexp*'] };
 
+// ── Standalone MLA KV cache handler (shared by deepseek2 and glm-dsa) ──
+function mlaKvCache(meta, ctxSize, kvTypeK, kvTypeV) {
+  const arch = meta['general.architecture'];
+  const kv_lora_rank = getMeta(meta, `${arch}.attention.kv_lora_rank`);
+  const key_length_mla = getMeta(meta, `${arch}.attention.key_length_mla`);
+  const n_layer = getMeta(meta, `${arch}.block_count`);
+  // MLA: K is compressed to kv_lora_rank, V is stored as key_length_mla
+  const totalElemsK = n_layer * kv_lora_rank * ctxSize;
+  const totalElemsV = n_layer * key_length_mla * ctxSize;
+  return {
+    bytesK: totalElemsK * (BPE[kvTypeK] || 0),
+    bytesV: totalElemsV * (BPE[kvTypeV] || 0),
+    totalBytes: 0, layers: n_layer, headsK: kv_lora_rank,
+    headsV: key_length_mla,
+    totalHeadsKV: kv_lora_rank + key_length_mla,
+    avgHeadsKV: (kv_lora_rank + key_length_mla) / n_layer,
+  };
+}
+
 // ── Architecture Registry ──
 // Each architecture declares its categories and provides specialized handlers
 // for KV cache, activations, and MoE weight calculations.
@@ -129,23 +148,7 @@ const ARCHITECTURES = {
   deepseek2: {
     name: 'deepseek2',
     categories: ['transformer', 'moe', 'mla'],
-    kvCache(meta, ctxSize, kvTypeK, kvTypeV) {
-      const arch = meta['general.architecture'];
-      const kv_lora_rank = getMeta(meta, `${arch}.attention.kv_lora_rank`);
-      const key_length_mla = getMeta(meta, `${arch}.attention.key_length_mla`);
-      const n_layer = getMeta(meta, `${arch}.block_count`);
-      // MLA: K is compressed to kv_lora_rank, V is stored as key_length_mla
-      const totalElemsK = n_layer * kv_lora_rank * ctxSize;
-      const totalElemsV = n_layer * key_length_mla * ctxSize;
-      return {
-        bytesK: totalElemsK * (BPE[kvTypeK] || 0),
-        bytesV: totalElemsV * (BPE[kvTypeV] || 0),
-        totalBytes: 0, layers: n_layer, headsK: kv_lora_rank,
-        headsV: key_length_mla,
-        totalHeadsKV: kv_lora_rank + key_length_mla,
-        avgHeadsKV: (kv_lora_rank + key_length_mla) / n_layer,
-      };
-    },
+    kvCache: mlaKvCache,
     activations(meta, ctxSize, batchSize) {
       const arch = meta['general.architecture'];
       const n_embd = getMeta(meta, `${arch}.embedding_length`);
@@ -820,19 +823,26 @@ const ARCHITECTURES = {
       const n_embd_head_v = getMeta(meta, `${arch}.attention.value_length`) || (n_embd / n_head);
       const n_head_kv = getMeta(meta, `${arch}.attention.head_count_kv`);
       const n_layer = getMeta(meta, `${arch}.block_count`);
-      const n_head_kv_arr = Array(n_layer).fill(n_head_kv);
-      let totalElemsK = 0, totalElemsV = 0;
+      // LFM2/LFM2MoE: recurrent layers have n_head_kv == 0 (no KV cache)
+      const n_head_kv_arr = Array.isArray(n_head_kv)
+        ? n_head_kv.map(v => Number(v))
+        : Array(n_layer).fill(n_head_kv);
+      let totalElemsK = 0, totalElemsV = 0, activeLayers = 0, activeHeadsKV = 0;
       for (let i = 0; i < n_layer; i++) {
-        totalElemsK += n_embd_head_k * n_head_kv_arr[i] * ctxSize;
-        totalElemsV += n_embd_head_v * n_head_kv_arr[i] * ctxSize;
+        if (n_head_kv_arr[i] > 0) {
+          totalElemsK += n_embd_head_k * n_head_kv_arr[i] * ctxSize;
+          totalElemsV += n_embd_head_v * n_head_kv_arr[i] * ctxSize;
+          activeLayers++;
+          activeHeadsKV += n_head_kv_arr[i];
+        }
       }
       return {
         bytesK: totalElemsK * (BPE[kvTypeK] || 0),
         bytesV: totalElemsV * (BPE[kvTypeV] || 0),
         totalBytes: 0, layers: n_layer, headsK: n_embd_head_k,
         headsV: n_embd_head_v,
-        totalHeadsKV: n_head_kv_arr.reduce((a, b) => a + b, 0),
-        avgHeadsKV: n_head_kv_arr.length > 0 ? n_head_kv_arr.reduce((a, b) => a + b, 0) / n_head_kv_arr.length : 0,
+        totalHeadsKV: activeHeadsKV,
+        avgHeadsKV: activeLayers > 0 ? activeHeadsKV / activeLayers : 0,
       };
     },
     activations(meta, ctxSize, batchSize) {
@@ -881,19 +891,27 @@ const ARCHITECTURES = {
       const n_embd_head_v = getMeta(meta, `${arch}.attention.value_length`) || (n_embd / n_head);
       const n_head_kv = getMeta(meta, `${arch}.attention.head_count_kv`);
       const n_layer = getMeta(meta, `${arch}.block_count`);
-      const n_head_kv_arr = Array(n_layer).fill(n_head_kv);
-      let totalElemsK = 0, totalElemsV = 0;
+      // Nemotron-H-MoE: hybrid SSM/attention. Recurrent layers have n_head_kv == 0 && n_ff == 0.
+      // FFN-only layers have n_head_kv == 0 && n_ff != 0. Only attention layers (n_head_kv != 0) have KV cache.
+      const n_head_kv_arr = Array.isArray(n_head_kv)
+        ? n_head_kv.map(v => Number(v))
+        : Array(n_layer).fill(n_head_kv);
+      let totalElemsK = 0, totalElemsV = 0, activeLayers = 0, activeHeadsKV = 0;
       for (let i = 0; i < n_layer; i++) {
-        totalElemsK += n_embd_head_k * n_head_kv_arr[i] * ctxSize;
-        totalElemsV += n_embd_head_v * n_head_kv_arr[i] * ctxSize;
+        if (n_head_kv_arr[i] > 0) {
+          totalElemsK += n_embd_head_k * n_head_kv_arr[i] * ctxSize;
+          totalElemsV += n_embd_head_v * n_head_kv_arr[i] * ctxSize;
+          activeLayers++;
+          activeHeadsKV += n_head_kv_arr[i];
+        }
       }
       return {
         bytesK: totalElemsK * (BPE[kvTypeK] || 0),
         bytesV: totalElemsV * (BPE[kvTypeV] || 0),
         totalBytes: 0, layers: n_layer, headsK: n_embd_head_k,
         headsV: n_embd_head_v,
-        totalHeadsKV: n_head_kv_arr.reduce((a, b) => a + b, 0),
-        avgHeadsKV: n_head_kv_arr.length > 0 ? n_head_kv_arr.reduce((a, b) => a + b, 0) / n_head_kv_arr.length : 0,
+        totalHeadsKV: activeHeadsKV,
+        avgHeadsKV: activeLayers > 0 ? activeHeadsKV / activeLayers : 0,
       };
     },
     activations(meta, ctxSize, batchSize) {
@@ -1060,37 +1078,18 @@ const ARCHITECTURES = {
     tensorGroups: { expert: ['*ffn_gate_exps*', '*ffn_gate_up_exps*', '*ffn_up_exps*', '*ffn_down_exps*'], router: ['*ffn_gate_inp*'], shared: [] },
   },
 
-  // ── DSA (DeepSeek Sparse Attention) ──
+  // ── DSA (DeepSeek Sparse Attention) — shares MLA KV cache with DeepSeek2 ──
   'glm-dsa': {
     name: 'glm-dsa',
-    categories: ['transformer'],
-    kvCache(meta, ctxSize, kvTypeK, kvTypeV) {
-      const arch = meta['general.architecture'];
-      const n_embd = getMeta(meta, `${arch}.embedding_length`);
-      const n_head = getMeta(meta, `${arch}.attention.head_count`);
-      const n_embd_head_k = getMeta(meta, `${arch}.attention.key_length`) || (n_embd / n_head);
-      const n_embd_head_v = getMeta(meta, `${arch}.attention.value_length`) || (n_embd / n_head);
-      const n_head_kv = getMeta(meta, `${arch}.attention.head_count_kv`);
-      const n_layer = getMeta(meta, `${arch}.block_count`);
-      // Standard KV cache for DSA (indexer affects sparse attention, not KV cache size)
-      const totalElemsK = n_layer * n_embd_head_k * n_head_kv * ctxSize;
-      const totalElemsV = n_layer * n_embd_head_v * n_head_kv * ctxSize;
-      return {
-        bytesK: totalElemsK * (BPE[kvTypeK] || 0),
-        bytesV: totalElemsV * (BPE[kvTypeV] || 0),
-        totalBytes: 0, layers: n_layer, headsK: n_embd_head_k,
-        headsV: n_embd_head_v,
-        totalHeadsKV: n_head_kv,
-        avgHeadsKV: n_head_kv,
-      };
-    },
+    categories: ['transformer', 'mla'],
+    kvCache: mlaKvCache,
     activations(meta, ctxSize, batchSize) {
       const arch = meta['general.architecture'];
       const n_embd = getMeta(meta, `${arch}.embedding_length`);
       const n_ff = getMeta(meta, `${arch}.feed_forward_length`);
       const n_layer = getMeta(meta, `${arch}.block_count`);
       const indexerTopK = getMeta(meta, `${arch}.attention.indexer.top_k`);
-      // DSA has additional indexer state
+      // DSA has additional indexer state (kv_cache_indexer_k, kv_cache_indexer_v)
       const perLayerBytes = ctxSize * batchSize * (n_embd + n_ff + indexerTopK * 256);
       return { totalBytes: perLayerBytes * n_layer * 4, perLayerBytes: perLayerBytes * 4, isMoe: false, expertCount: 0, expertUsedCount: 0, expertFF: 0 };
     },
