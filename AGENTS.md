@@ -41,3 +41,7 @@ url = path.replace(/\/blob\//, '/resolve/').replace(/#.*$/, '');
 ## Bytes-per-element hardcoded
 
 `GGML_QUANT_SIZES` is NOT exported from the browser build. BPE values are hardcoded as the `BPE` object in `index.html` (lines 618–653). Use `GGMLQuantizationType` enum keys as indices.
+
+## Talking to huggingface
+
+Use node and the `@huggingface/gguf` package when you need metadata or examples.
