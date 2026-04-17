@@ -35,12 +35,10 @@ Then open `http://localhost:8000` in a browser.
 
 ## Architecture
 
-Single `index.html` file — no build step, no dependencies. Uses [`@huggingface/gguf`](https://www.npmjs.com/package/@huggingface/gguf) from CDN for GGUF parsing.
+Two files, no build step, no dependencies. Uses [`@huggingface/gguf`](https://www.npmjs.com/package/@huggingface/gguf) from CDN for GGUF parsing.
 
-- **HF path resolution** — queries `/api/models/{path}` to find `.gguf` files
-- **GGUF parsing** — `gguf(url)` fetches the header + metadata + tensor info via Range requests
-- **Weight calculation** — iterates `tensorInfos`, multiplies shape product by bytes-per-element from `GGML_QUANT_SIZES`
-- **MoE detection** — checks `expert_count > 0`, groups `*_exps.*` tensors, separates active vs inactive
+- **`calculations.js`** — Pure calculation module: architecture registry (llama, deepseek2, gemma4, gpt-oss, llama4, qwen3moe), KV cache, activations, MoE, and weight size computations
+- **`index.html`** — Display layer: HTML/CSS, GGUF parsing via `gguf()`, HF API resolution, result rendering, and event handling
 
 ## Quantization types supported
 

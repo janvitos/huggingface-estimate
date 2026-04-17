@@ -2,7 +2,10 @@
 
 ## Structure
 
-Single `index.html` — no build step, no dependencies. Loads `@huggingface/gguf` from jsDelivr CDN (`0.4.2`).
+Two files — no build step, no dependencies. Loads `@huggingface/gguf` from jsDelivr CDN (`0.4.2`).
+
+- **`calculations.js`** — Pure calculation module with architecture registry, KV cache, activations, MoE, and weight calculations
+- **`index.html`** — Display layer with HTML/CSS, GGUF parsing, HF API resolution, and result rendering
 
 ## Must serve via HTTP
 
@@ -40,7 +43,7 @@ url = path.replace(/\/blob\//, '/resolve/').replace(/#.*$/, '');
 
 ## Bytes-per-element hardcoded
 
-`GGML_QUANT_SIZES` is NOT exported from the browser build. BPE values are hardcoded as the `BPE` object in `index.html` (lines 618–653). Use `GGMLQuantizationType` enum keys as indices.
+`GGML_QUANT_SIZES` is NOT exported from the browser build. BPE values are hardcoded as the `BPE` object in `calculations.js` (lines 5–40). Use `GGMLQuantizationType` enum keys as indices.
 
 ## Talking to huggingface
 
@@ -48,7 +51,7 @@ Use node and the `@huggingface/gguf` package when you need metadata or examples.
 
 ## Adding a new architecture
 
-New architectures are added to the `ARCHITECTURES` registry in `index.html` (lines 613–1060). Each entry declares categories and provides handlers for KV cache, activations, and MoE weights.
+New architectures are added to the `ARCHITECTURES` registry in `calculations.js` (lines 52–447). Each entry declares categories and provides handlers for KV cache, activations, and MoE weights.
 
 ### Step 1: Identify the architecture
 
