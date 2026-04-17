@@ -444,6 +444,72 @@ const ARCHITECTURES = {
     },
     tensorGroups: { expert: ['*ffn_gate_exps*', '*ffn_up_exps*', '*ffn_down_exps*'], router: ['*ffn_gate_inp*'], shared: [] },
   },
+
+  // ── Qwen3.6 MoE (qwen35moe): mixed DeltaNet/attention + MoE with shared experts ──
+  qwen35moe: {
+    name: 'qwen35moe',
+    categories: ['transformer', 'moe'],
+    kvCache(meta, ctxSize, kvTypeK, kvTypeV) {
+      const arch = meta['general.architecture'];
+      const n_embd = getMeta(meta, `${arch}.embedding_length`);
+      const n_head = getMeta(meta, `${arch}.attention.head_count`);
+      const n_embd_head_k = getMeta(meta, `${arch}.attention.key_length`) || (n_embd / n_head);
+      const n_embd_head_v = getMeta(meta, `${arch}.attention.value_length`) || (n_embd / n_head);
+      const n_head_kv = getMeta(meta, `${arch}.attention.head_count_kv`);
+      const n_layer = getMeta(meta, `${arch}.block_count`);
+      const n_head_kv_arr = Array(n_layer).fill(n_head_kv);
+      let totalElemsK = 0, totalElemsV = 0;
+      for (let i = 0; i < n_layer; i++) {
+        totalElemsK += n_embd_head_k * n_head_kv_arr[i] * ctxSize;
+        totalElemsV += n_embd_head_v * n_head_kv_arr[i] * ctxSize;
+      }
+      return {
+        bytesK: totalElemsK * (BPE[kvTypeK] || 0),
+        bytesV: totalElemsV * (BPE[kvTypeV] || 0),
+        totalBytes: 0, layers: n_layer, headsK: n_embd_head_k,
+        headsV: n_embd_head_v,
+        totalHeadsKV: n_head_kv_arr.reduce((a, b) => a + b, 0),
+        avgHeadsKV: n_head_kv_arr.length > 0 ? n_head_kv_arr.reduce((a, b) => a + b, 0) / n_head_kv_arr.length : 0,
+      };
+    },
+    activations(meta, ctxSize, batchSize) {
+      const arch = meta['general.architecture'];
+      const n_embd = getMeta(meta, `${arch}.embedding_length`);
+      const n_ff = getMeta(meta, `${arch}.feed_forward_length`);
+      const n_layer = getMeta(meta, `${arch}.block_count`);
+      const expertCount = getMeta(meta, `${arch}.expert_count`);
+      const expertUsedCount = getMeta(meta, `${arch}.expert_used_count`);
+      const expertFF = getMeta(meta, `${arch}.expert_feed_forward_length`);
+      const isMoe = expertCount > 0;
+      let perLayerBytes;
+      if (isMoe && expertUsedCount > 0 && expertFF > 0) {
+        // Shared expert (1) + routed experts (expertUsedCount), plus residual connection
+        perLayerBytes = ctxSize * batchSize * (2 * n_embd + expertUsedCount * expertFF);
+      } else {
+        perLayerBytes = ctxSize * batchSize * (n_embd + n_ff);
+      }
+      return { totalBytes: perLayerBytes * n_layer * 4, perLayerBytes: perLayerBytes * 4, isMoe, expertCount, expertUsedCount, expertFF };
+    },
+    moe(meta, tensorInfos) {
+      const arch = meta['general.architecture'];
+      const expertCount = getMeta(meta, `${arch}.expert_count`);
+      const expertUsedCount = getMeta(meta, `${arch}.expert_used_count`);
+      if (expertCount === 0) return null;
+      const expertTensors = tensorInfos.filter(t => t.name.includes('_exps.'));
+      const routerTensor = tensorInfos.find(t => t.name.includes('ffn_gate_inp'));
+      const sharedTensors = tensorInfos.filter(t => t.name.includes('_shexp.') || t.name.includes('ffn_gate_inp_shexp'));
+      let expertWeightBytes = 0, routerBytes = 0, sharedBytes = 0;
+      for (const t of expertTensors) { const n = t.shape.map(Number).reduce((a, b) => a * b, 1); expertWeightBytes += n * (BPE[t.dtype] || 0); }
+      if (routerTensor) { const n = routerTensor.shape.map(Number).reduce((a, b) => a * b, 1); routerBytes = n * (BPE[routerTensor.dtype] || 0); }
+      for (const t of sharedTensors) { const n = t.shape.map(Number).reduce((a, b) => a * b, 1); sharedBytes += n * (BPE[t.dtype] || 0); }
+      const totalParams = tensorInfos.reduce((s, t) => s + t.shape.map(Number).reduce((a, b) => a * b, 1), 0);
+      const expertParams = expertTensors.reduce((s, t) => s + t.shape.map(Number).reduce((a, b) => a * b, 1), 0);
+      const perExpertWeightBytes = expertCount > 0 ? expertWeightBytes / expertCount : 0;
+      const activeExpertWeightBytes = perExpertWeightBytes * expertUsedCount;
+      return { expertCount, expertUsedCount, expertWeightBytes, routerBytes, sharedBytes, totalWeightBytes: expertWeightBytes + routerBytes + sharedBytes, totalParams, expertParams, activeExpertWeightBytes };
+    },
+    tensorGroups: { expert: ['*ffn_gate_exps*', '*ffn_up_exps*', '*ffn_down_exps*'], router: ['*ffn_gate_inp*'], shared: ['*ffn_gate_inp_shexp*', '*ffn_gate_shexp*', '*ffn_up_shexp*', '*ffn_down_shexp*'] },
+  },
 };
 
 // ── Get architecture handler with fallback ──
