@@ -1,0 +1,6 @@
+{
+  "type": "module",
+  "dependencies": {
+    "@huggingface/gguf": "^0.4.2"
+  }
+}
