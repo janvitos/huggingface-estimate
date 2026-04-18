@@ -1,5 +1,3 @@
-batch-results.json
-testmodels.list
 node_modules/
 llama.cpp/
 ik_llama.cpp/
