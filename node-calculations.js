@@ -1349,7 +1349,9 @@ export function getModelArch(metadata) {
 export function getMeta(metadata, key, fallback = 0) {
   const val = metadata[key];
   if (val === undefined || val === null) return fallback;
-  return Number(val) || fallback;
+  if (Array.isArray(val)) return val;
+  const n = Number(val);
+  return Number.isNaN(n) ? fallback : n;
 }
 
 export function calcWeightSize(tensorInfos) {
