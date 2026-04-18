@@ -37,6 +37,8 @@ const BPE = {
   [GGMLQuantizationType.MXFP4]: 17 / 32,
   [GGMLQuantizationType.NVFP4]: 36 / 64,
   [GGMLQuantizationType.Q1_0]: 18 / 128,
+  36: 1.0,         // I2_S (MS BitNet)
+  133: 26 / 32,    // Q6_0
   // ── ik_llama.cpp extensions (not in @huggingface/gguf@0.4.2) ──
   // KV cache quantizations
   151: 32 / 32,   // Q8_KV
@@ -103,6 +105,7 @@ const BPE = {
   352: 168 / 256, // IQ5_KS_R4
   // Other
   230: 2 / 1,     // BF16_R16
+  397: 258 / 256, // Q8_K_R16
 };
 
 // Quantization type names for display
@@ -170,6 +173,9 @@ const IK_LLAMA_QUANT_NAMES = {
   344: 'IQ4_KS_R4 (ik_llama)',
   352: 'IQ5_KS_R4 (ik_llama)',
   230: 'BF16_R16 (ik_llama)',
+  36: 'I2_S (ik_llama)',
+  133: 'Q6_0 (ik_llama)',
+  397: 'Q8_K_R16 (ik_llama)',
 };
 Object.assign(QUANT_NAMES, IK_LLAMA_QUANT_NAMES);
 

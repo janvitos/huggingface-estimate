@@ -46,8 +46,8 @@ const BPE = {
   // Q8 variants (different block sizes)
   136: 68 / 64,   // Q8_K64
   147: 64 / 64,   // Q8_K16
-  148: 292 / 256, // Q8_K32
-  149: 292 / 256, // Q8_KR8
+  148: 296 / 256, // Q8_K32
+  149: 296 / 256, // Q8_KR8
   150: 140 / 128, // Q8_K128
   399: 258 / 256, // Q8_K_R8
   // X4 row-interleaved variants
@@ -105,6 +105,7 @@ const BPE = {
   352: 168 / 256, // IQ5_KS_R4
   // Other
   230: 2 / 1,     // BF16_R16
+  397: 258 / 256, // Q8_K_R16
 };
 
 // Quantization type names for display
@@ -1056,6 +1057,8 @@ const ARCHITECTURES = {
       const n_embd_head_v = getMeta(meta, `${arch}.attention.value_length`) || (n_embd / n_head);
       const n_head_kv = getMeta(meta, `${arch}.attention.head_count_kv`);
       const n_layer = getMeta(meta, `${arch}.block_count`);
+      // Nemotron-H-MoE: hybrid SSM/attention. Recurrent layers have n_head_kv == 0 && n_ff == 0.
+      // FFN-only layers have n_head_kv == 0 && n_ff != 0. Only attention layers (n_head_kv != 0) have KV cache.
       const n_head_kv_arr = Array.isArray(n_head_kv)
         ? n_head_kv.map(v => Number(v))
         : Array(n_layer).fill(n_head_kv);
