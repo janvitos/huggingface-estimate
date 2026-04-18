@@ -1,4 +1,4 @@
-import { gguf, ggufAllShards, GGMLQuantizationType } from 'https://cdn.jsdelivr.net/npm/@huggingface/gguf@0.4.2/+esm';
+import { gguf, ggufAllShards, GGMLQuantizationType } from '@huggingface/gguf';
 
 export { GGMLQuantizationType };
 

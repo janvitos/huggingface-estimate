@@ -1,8 +1,8 @@
-import { GGMLQuantizationType } from 'https://cdn.jsdelivr.net/npm/@huggingface/gguf@0.4.2/+esm';
+import { GGMLQuantizationType } from '@huggingface/gguf';
 
 // ── Bytes-per-element for each quantization type ──
 // Exact values from GGML quantization block structures
-const BPE = {
+export const BPE = {
   [GGMLQuantizationType.F32]: 4.0,
   [GGMLQuantizationType.F16]: 2.0,
   [GGMLQuantizationType.BF16]: 2.0,

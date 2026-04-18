@@ -1,4 +1,4 @@
-import { resolveHFModel, parseGGUF, GGMLQuantizationType } from './node-parsing.js';
+import { resolveHFModel, parseGGUF, GGMLQuantizationType } from './parsing.js';
 import {
   getArchHandler,
   getModelArch,
@@ -11,7 +11,7 @@ import {
   QUANT_NAMES,
   getMeta,
   BPE,
-} from './node-calculations.js';
+} from './calculations.js';
 
 // ── CLI argument parsing ──
 function parseKvType(val, flag) {

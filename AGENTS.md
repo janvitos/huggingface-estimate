@@ -4,17 +4,13 @@
 
 No build step, no framework. ESM throughout (`package.json` has `"type": "module"`).
 
-**Browser files** (ESM via CDN imports from jsDelivr):
-- `index.html` — UI: HTML/CSS, GGUF parsing, HF API resolution, result rendering
-- `calculations.js` — Architecture registry, KV cache, activations, MoE, weight calculations
-- `parsing.js` — GGUF metadata parsing + HF URL resolution
+**Single source of truth** — one copy of `calculations.js` and `parsing.js` runs in both browser and Node:
+- `index.html` — UI: HTML/CSS, result rendering. Declares an `<script type="importmap">` that remaps the bare specifier `@huggingface/gguf` to the jsDelivr CDN URL.
+- `calculations.js` — Architecture registry, KV cache, activations, MoE, weight calculations. Imports `@huggingface/gguf` as a bare specifier.
+- `parsing.js` — GGUF metadata parsing + HF URL resolution. Same import convention.
+- `run-calc.js` — Node CLI entry point. Resolves the bare specifier via Node's normal package lookup (`node_modules/@huggingface/gguf`).
 
-**Node CLI files** (ESM via npm, all in project root):
-- `run-calc.js` — CLI entry point
-- `node-calculations.js` — Mirror of `calculations.js` with npm imports
-- `node-parsing.js` — Mirror of `parsing.js` with npm imports
-
-**Critical pattern**: Browser and Node files share identical logic but differ only in import source (`https://cdn.jsdelivr.net/npm/@huggingface/gguf@0.4.2/+esm` vs `@huggingface/gguf`). Changes to calculation or parsing logic **must be applied to both file pairs**.
+**Import map requirement**: the `<script type="importmap">` in `index.html` must be emitted before any `<script type="module">`. Supported in Chromium ≥89, Firefox ≥108, Safari ≥16.4.
 
 **Gitignored reference dirs**: `llama.cpp/`, `ik_llama.cpp/`, `gguf-parser-go/` — local clones for quantization type reference, not part of the app.
 
@@ -59,11 +55,11 @@ url = path.replace(/\/blob\//, '/resolve/').replace(/#.*$/, '');
 
 ## Bytes-per-element hardcoded
 
-`GGML_QUANT_SIZES` is NOT exported from the browser build. BPE values are hardcoded as the `BPE` object in `calculations.js` / `node-calculations.js`. Standard types use `GGMLQuantizationType` enum keys as indices; ik_llama.cpp extensions use numeric IDs (e.g., `151` for Q8_KV). The `BPE` object is the sole source of truth for bytes-per-element.
+`GGML_QUANT_SIZES` is NOT exported from the browser build. BPE values are hardcoded as the `BPE` object in `calculations.js`. Standard types use `GGMLQuantizationType` enum keys as indices; ik_llama.cpp extensions use numeric IDs (e.g., `151` for Q8_KV). The `BPE` object is the sole source of truth for bytes-per-element.
 
 ## CDN version pin
 
-Browser files import from `https://cdn.jsdelivr.net/npm/@huggingface/gguf@0.4.2/+esm`. Check updates at `https://data.jsdelivr.com/v1/package/npm/@huggingface/gguf`.
+The importmap in `index.html` pins `@huggingface/gguf` to `https://cdn.jsdelivr.net/npm/@huggingface/gguf@0.4.2/+esm`. Node loads the same version from `package.json`. Check updates at `https://data.jsdelivr.com/v1/package/npm/@huggingface/gguf`.
 
 ## Sharded GGUF
 
@@ -71,7 +67,7 @@ Files matching `*-of-*.gguf` are auto-detected as shards in `parseGGUF()`. Calls
 
 ## Adding a new architecture
 
-Add to the `ARCHITECTURES` registry in **both** `calculations.js` and `node-calculations.js`. Each entry declares categories and provides handlers for KV cache, activations, and MoE weights.
+Add to the `ARCHITECTURES` registry in `calculations.js`. Each entry declares categories and provides handlers for KV cache, activations, and MoE weights.
 
 ### Step 1: Identify the architecture
 
@@ -165,3 +161,11 @@ Then open in browser and load the model to verify.
 ### Fallback
 
 Unknown architectures fall back to the `llama` handler. A warning logs to the console.
+
+### Example model and quantization refrence code
+
+The directores `ik_llama.cpp/` `llama.cpp/` and `ik_llama.cpp/` contain variants of the llama.cpp inference engine
+with quantization and KV cache quantization implementations. Use these as reference code for proper model calcuations.
+
+The directory `gguf-parser-go/` contains an alternative memory calculator implemenmtation which can be used for
+comaparisons. Do not presume it is 100% correct.
