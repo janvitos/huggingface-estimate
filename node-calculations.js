@@ -327,16 +327,28 @@ const ARCHITECTURES = {
       const n_head = getMeta(meta, `${arch}.attention.head_count`);
       const n_embd_head_k = getMeta(meta, `${arch}.attention.key_length`) || (n_embd / n_head);
       const n_embd_head_v = getMeta(meta, `${arch}.attention.value_length`) || (n_embd / n_head);
-      const n_head_kv = getMeta(meta, `${arch}.attention.head_count_kv`);
+      const n_embd_head_k_swa = getMeta(meta, `${arch}.attention.key_length_swa`) || n_embd_head_k;
+      const n_embd_head_v_swa = getMeta(meta, `${arch}.attention.value_length_swa`) || n_embd_head_v;
+      const n_head_kv_raw = getMeta(meta, `${arch}.attention.head_count_kv`);
       const n_layer = getMeta(meta, `${arch}.block_count`);
-      // ISWA: head_count_kv can be an array (per-layer)
-      const n_head_kv_arr = Array.isArray(n_head_kv)
-        ? (() => { const a = Array(n_layer).fill(n_head[0] || 1); for (let i = 0; i < n_layer; i++) if (n_head_kv[i]) a[i] = Number(n_head_kv[i]); return a; })()
-        : Array(n_layer).fill(n_head_kv);
+      const n_swa = getMeta(meta, `${arch}.attention.sliding_window`);
+      const swa_pattern_raw = getMeta(meta, `${arch}.attention.sliding_window_pattern`);
+      const n_kv_shared = getMeta(meta, `${arch}.attention.shared_kv_layers`);
+      const n_layer_kv = n_kv_shared > 0 ? n_layer - n_kv_shared : n_layer;
+      const n_head_kv_arr = Array.isArray(n_head_kv_raw)
+        ? (() => { const a = Array(n_layer_kv).fill(n_head[0] || 1); for (let i = 0; i < n_layer_kv; i++) if (n_head_kv_raw[i]) a[i] = Number(n_head_kv_raw[i]); return a; })()
+        : Array(n_layer_kv).fill(n_head_kv_raw);
+      const swa_arr = Array.isArray(swa_pattern_raw)
+        ? swa_pattern_raw.map(v => Number(v) !== 0)
+        : null;
       let totalElemsK = 0, totalElemsV = 0;
-      for (let i = 0; i < n_layer; i++) {
-        totalElemsK += n_embd_head_k * n_head_kv_arr[i] * ctxSize;
-        totalElemsV += n_embd_head_v * n_head_kv_arr[i] * ctxSize;
+      for (let i = 0; i < n_layer_kv; i++) {
+        const isSwa = swa_arr ? !!swa_arr[i] : false;
+        const layerCtx = isSwa ? Math.min(n_swa || ctxSize, ctxSize) : ctxSize;
+        const headK = isSwa ? n_embd_head_k_swa : n_embd_head_k;
+        const headV = isSwa ? n_embd_head_v_swa : n_embd_head_v;
+        totalElemsK += headK * n_head_kv_arr[i] * layerCtx;
+        totalElemsV += headV * n_head_kv_arr[i] * layerCtx;
       }
       return {
         bytesK: totalElemsK * (BPE[kvTypeK] || 0),
