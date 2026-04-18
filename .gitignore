@@ -2,3 +2,4 @@ node_modules/
 llama.cpp/
 ik_llama.cpp/
 gguf-parser-go/
+llama-cpp-rotorquant/

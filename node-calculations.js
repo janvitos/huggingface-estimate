@@ -2,7 +2,7 @@ import { GGMLQuantizationType } from '@huggingface/gguf';
 
 // ── Bytes-per-element for each quantization type ──
 // Exact values from GGML quantization block structures
-const BPE = {
+export const BPE = {
   [GGMLQuantizationType.F32]: 4.0,
   [GGMLQuantizationType.F16]: 2.0,
   [GGMLQuantizationType.BF16]: 2.0,
@@ -106,6 +106,14 @@ const BPE = {
   // Other
   230: 2 / 1,     // BF16_R16
   397: 258 / 256, // Q8_K_R16
+  // rotorquant KV cache quantization
+  TURBO3_0: 50 / 128,
+  TURBO4_0: 68 / 128,
+  TURBO2_0: 34 / 128,
+  PLANAR3_0: 50 / 128,
+  ISO3_0: 50 / 128,
+  PLANAR4_0: 68 / 128,
+  ISO4_0: 68 / 128,
 };
 
 // Quantization type names for display
@@ -178,6 +186,16 @@ const IK_LLAMA_QUANT_NAMES = {
   397: 'Q8_K_R16 (ik_llama)',
 };
 Object.assign(QUANT_NAMES, IK_LLAMA_QUANT_NAMES);
+const ROTORQUANT_QUANT_NAMES = {
+  TURBO3_0: 'TURBO3_0 (rotorquant)',
+  TURBO4_0: 'TURBO4_0 (rotorquant)',
+  TURBO2_0: 'TURBO2_0 (rotorquant)',
+  PLANAR3_0: 'PLANAR3_0 (rotorquant)',
+  ISO3_0: 'ISO3_0 (rotorquant)',
+  PLANAR4_0: 'PLANAR4_0 (rotorquant)',
+  ISO4_0: 'ISO4_0 (rotorquant)',
+};
+Object.assign(QUANT_NAMES, ROTORQUANT_QUANT_NAMES);
 
 // ── Standalone handler functions (reused by multiple architectures) ──
 function llamaKvCache(meta, ctxSize, kvTypeK, kvTypeV) {

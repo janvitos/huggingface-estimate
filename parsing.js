@@ -15,6 +15,9 @@ export const KV_VALID_QUANTS = [
   // ik_llama.cpp KV cache quantizations
   151,  // Q8_KV
   398,  // Q8_KV_R8
+  // rotorquant KV cache quantizations
+  'TURBO3_0', 'TURBO4_0', 'TURBO2_0',
+  'PLANAR3_0', 'ISO3_0', 'PLANAR4_0', 'ISO4_0',
 ];
 
 /**

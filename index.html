@@ -777,8 +777,8 @@ function renderResults() {
   const arch = getModelArch(currentMetadata);
   const ctxSize = parseInt(contextLenEl.value) || 4096;
   const batchSize = parseInt(batchSizeEl.value) || 1;
-  const kvTypeK = parseInt(kvTypeKEl.value);
-  const kvTypeV = parseInt(kvTypeVEl.value);
+  const kvTypeK = isNaN(kvTypeKEl.value) ? kvTypeKEl.value : parseInt(kvTypeKEl.value);
+  const kvTypeV = isNaN(kvTypeVEl.value) ? kvTypeVEl.value : parseInt(kvTypeVEl.value);
   const vramGB = parseFloat(vramEl.value) || 0;
   const ramGB = parseFloat($('#ram').value) || 0;
 

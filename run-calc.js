@@ -10,6 +10,7 @@ import {
   formatElements,
   QUANT_NAMES,
   getMeta,
+  BPE,
 } from './node-calculations.js';
 
 // ── CLI argument parsing ──
@@ -38,11 +39,13 @@ function parseArgs(argv) {
       const val = argv[++i];
       args.kvTypeK = GGMLQuantizationType[val] !== undefined
         ? GGMLQuantizationType[val]
+        : BPE[val] !== undefined ? val
         : parseInt(val, 10);
     } else if (arg === '--kvTypeV') {
       const val = argv[++i];
       args.kvTypeV = GGMLQuantizationType[val] !== undefined
         ? GGMLQuantizationType[val]
+        : BPE[val] !== undefined ? val
         : parseInt(val, 10);
     } else if (arg === '--vram') {
       args.vram = parseFloat(argv[++i]) || 0;
