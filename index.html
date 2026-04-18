@@ -876,8 +876,8 @@ function renderResults() {
   if (isMla) {
     const archMeta = getModelArch(currentMetadata);
     const kvLora = getMeta(currentMetadata, `${archMeta}.attention.kv_lora_rank`);
-    const keyMla = getMeta(currentMetadata, `${archMeta}.attention.key_length_mla`);
-    $('#kvHeads').textContent = `K:${kvLora} V:${keyMla}`;
+    const nRot = getMeta(currentMetadata, `${archMeta}.rope.dimension_count`);
+    $('#kvHeads').textContent = `K:${kvLora}+${nRot} V:none (MLA)`;
   } else {
     $('#kvHeads').textContent = kv.avgHeadsKV.toFixed(1);
   }

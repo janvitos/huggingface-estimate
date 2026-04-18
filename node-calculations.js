@@ -241,18 +241,16 @@ const LLAMA_TENSOR_GROUPS = { expert: ['*ffn_gate_exps*', '*ffn_up_exps*', '*ffn
 function mlaKvCache(meta, ctxSize, kvTypeK, kvTypeV) {
   const arch = meta['general.architecture'];
   const kv_lora_rank = getMeta(meta, `${arch}.attention.kv_lora_rank`);
-  const key_length_mla = getMeta(meta, `${arch}.attention.key_length_mla`);
+  const n_rot = getMeta(meta, `${arch}.rope.dimension_count`);
   const n_layer = getMeta(meta, `${arch}.block_count`);
-  // MLA: K is compressed to kv_lora_rank, V is stored as key_length_mla
-  const totalElemsK = n_layer * kv_lora_rank * ctxSize;
-  const totalElemsV = n_layer * key_length_mla * ctxSize;
+  const totalElemsK = n_layer * (kv_lora_rank + n_rot) * ctxSize;
   return {
     bytesK: totalElemsK * (BPE[kvTypeK] || 0),
-    bytesV: totalElemsV * (BPE[kvTypeV] || 0),
-    totalBytes: 0, layers: n_layer, headsK: kv_lora_rank,
-    headsV: key_length_mla,
-    totalHeadsKV: kv_lora_rank + key_length_mla,
-    avgHeadsKV: (kv_lora_rank + key_length_mla) / n_layer,
+    bytesV: 0,
+    totalBytes: 0, layers: n_layer, headsK: kv_lora_rank + n_rot,
+    headsV: 0,
+    totalHeadsKV: kv_lora_rank + n_rot,
+    avgHeadsKV: (kv_lora_rank + n_rot) / n_layer,
   };
 }
 
