@@ -11,7 +11,7 @@ const BPE = {
   [GGMLQuantizationType.Q5_0]: 22 / 32,
   [GGMLQuantizationType.Q5_1]: 24 / 32,
   [GGMLQuantizationType.Q8_0]: 34 / 32,
-  [GGMLQuantizationType.Q8_1]: 40 / 32,
+  [GGMLQuantizationType.Q8_1]: 36 / 32,
   [GGMLQuantizationType.Q2_K]: 84 / 256,
   [GGMLQuantizationType.Q3_K]: 110 / 256,
   [GGMLQuantizationType.Q4_K]: 144 / 256,
