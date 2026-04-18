@@ -18,8 +18,8 @@ Open `http://localhost:8000`. Enter a HuggingFace path (e.g. `bartowski/Llama-3.
 ### CLI
 
 ```bash
-node run-calc.js bartowski/Llama-8B-Instruct-GGUF --ctx 8192 --kvTypeK Q8_KV
-node run-calc.js --batch testmodels.list
+node run-calc.js bartowski/Llama-3.1-8B-Instruct-GGUF --ctx 8192 --kvTypeK Q8_0
+node run-calc.js --batch testModels.list
 ```
 
 Options: `--ctx N`, `--batchSize N`, `--kvTypeK TYPE`, `--kvTypeV TYPE`. Batch file has one HF repo per line. KV cache types include F16, F32, BF16, Q8_0, Q4_0, Q4_1, IQ4_NL, Q5_0, Q5_1, Q8_KV, Q8_KV_R8.
@@ -30,7 +30,7 @@ Options: `--ctx N`, `--batchSize N`, `--kvTypeK TYPE`, `--kvTypeV TYPE`. Batch f
 |-----------|-------|---------|
 | **Model weights** | Dense: VRAM / MoE: VRAM (active) + RAM (inactive) | Sum of all tensor sizes from GGUF metadata, exact bytes-per-element per quantization type |
 | **KV cache** | VRAM | Separate K and V quantization. `layers × kv_heads × head_size × context × bytes_per_elem` per cache |
-| **Activations** | VRAM | `layers × batch × context × (hidden + ff_size) × 4` bytes (FP32). For MoE, uses `expert_used_count × expert_ff_size` |
+| **Activations** | VRAM | `layers × batch × (hidden + ff_size) × 4` bytes (FP32). For MoE, uses `expert_used_count × expert_ff_size` |
 
 ## Dense vs MoE
 
@@ -51,15 +51,15 @@ The model fits on a 24GB GPU even though total weight size is ~22GB — only the
 
 ## Supported architectures
 
-llama, mistral, qwen2/3/3.5/3next, phi3, gemma2/3, olmo2, glm4, falcon-h1, cohere2, smollm3, ernie4_5, grok, nemotron_h, lfm2, minimax-m2, seed_oss, apertus, dots1, flux, ltxv, lumina2, qwen_image, wan, mimo2, hunyuan-dense, qwen3vlmoe, ernie4_5_moe, hunyuan_moe, bailingmoe2, deepseek2 (MLA), gemma4 (ISWA), gpt-oss (ISWA), llama4 (ISWA)
+llama, mistral3/4, qwen2/3/3.5/3next, qwen2vl, qwen3vl, qwen3moe, qwen35moe, qwen3vlmoe, phi3, gemma2/3/3n, gemma-embedding, olmo2, granite, granitehybrid, glm4, glm4moe, glm-dsa, falcon-h1, cohere2, smollm3, ernie4_5, ernie4_5_moe, grok, nemotron_h, nemotron_h_moe, lfm2, lfm2_moe, minimax-m2, seed_oss, apertus, dots1, afmoe, deci, flux, ltxv, lumina2, qwen_image, wan, mimo2, hunyuan-dense, hunyuan_moe, bailingmoe2, deepseek2 (MLA), gemma4 (ISWA), gpt-oss (ISWA), llama4 (ISWA)
 
 ## Quantization types
 
-91 types supported (34 standard + 57 from [ik_llama.cpp](ik_llama.cpp)):
+94 types supported (34 standard + 60 from [ik_llama.cpp](ik_llama.cpp)):
 
 **Standard:** F32, F16, BF16, Q4_0, Q4_1, Q5_0, Q5_1, Q8_0, Q8_1, Q2_K, Q3_K, Q4_K, Q5_K, Q6_K, Q8_K, IQ1_S, IQ2_S, IQ2_XS, IQ2_XXS, IQ3_S, IQ3_XXS, IQ4_NL, IQ4_XS, IQ1_M, TQ1_0, TQ2_0, MXFP4, NVFP4, Q1_0, I8, I16, I32, I64, F64
 
-**ik_llama.cpp extensions:** Q8_KV, Q8_KV_R8 (KV cache), Q8_K64, Q8_K16, Q8_K32, Q8_KR8, Q8_K128, Q8_K_R8, Q8_0_X4, Q8_1_X4, Q8_2_X4, Q4_0_4_4, Q4_0_4_8, Q4_0_8_8, IQ1_BN, IQ2_BN, IQ2_K, IQ3_K, IQ4_K, IQ5_K, IQ6_K, IQ4_KS, IQ2_KS, IQ4_KSS, IQ5_KS, IQ2_KT, IQ3_KT, IQ4_KT, IQ3_KS, IQ2_KL, IQ1_KT, Q4_0_R8, Q5_0_R4, Q8_0_R8, Q2_K_R4, Q3_K_R4, Q4_K_R4, Q5_K_R4, Q6_K_R4, IQ2_XXS_R4, IQ2_XS_R4, IQ3_XXS_R4, IQ1_S_R4, IQ4_NL_R4, IQ3_S_R4, IQ2_S_R4, IQ4_XS_R8, IQ1_M_R4, Q6_0_R4, IQ2_BN_R4, IQ2_K_R4, IQ3_K_R4, IQ4_K_R4, IQ5_K_R4, IQ4_KS_R4, IQ5_KS_R4, BF16_R16
+**ik_llama.cpp extensions:** I2_S (MS BitNet ternary), Q6_0, Q8_KV, Q8_KV_R8, Q8_K_R16 (KV cache), Q8_K64, Q8_K16, Q8_K32, Q8_KR8, Q8_K128, Q8_K_R8, Q8_0_X4, Q8_1_X4, Q8_2_X4, Q4_0_4_4, Q4_0_4_8, Q4_0_8_8, IQ1_BN, IQ2_BN, IQ2_K, IQ3_K, IQ4_K, IQ5_K, IQ6_K, IQ4_KS, IQ2_KS, IQ4_KSS, IQ5_KS, IQ2_KT, IQ3_KT, IQ4_KT, IQ3_KS, IQ2_KL, IQ1_KT, Q4_0_R8, Q5_0_R4, Q8_0_R8, Q2_K_R4, Q3_K_R4, Q4_K_R4, Q5_K_R4, Q6_K_R4, IQ2_XXS_R4, IQ2_XS_R4, IQ3_XXS_R4, IQ1_S_R4, IQ4_NL_R4, IQ3_S_R4, IQ2_S_R4, IQ4_XS_R8, IQ1_M_R4, Q6_0_R4, IQ2_BN_R4, IQ2_K_R4, IQ3_K_R4, IQ4_K_R4, IQ5_K_R4, IQ4_KS_R4, IQ5_KS_R4, BF16_R16
 
 ## See also
 

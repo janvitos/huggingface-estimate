@@ -2,12 +2,21 @@
 
 ## Structure
 
-Two-file browser app, no build step, no dependencies. Loads `@huggingface/gguf` from jsDelivr CDN (`0.4.2`).
+No build step, no framework. ESM throughout (`package.json` has `"type": "module"`).
 
-- **`calculations.js`** — Pure calculation module: architecture registry, KV cache, activations, MoE, weight calculations
-- **`index.html`** — Display layer: HTML/CSS, GGUF parsing, HF API resolution, result rendering
+**Browser files** (ESM via CDN imports from jsDelivr):
+- `index.html` — UI: HTML/CSS, GGUF parsing, HF API resolution, result rendering
+- `calculations.js` — Architecture registry, KV cache, activations, MoE, weight calculations
+- `parsing.js` — GGUF metadata parsing + HF URL resolution
 
-Node CLI entry points (in `node_modules/`): `node-calculations.js`, `node-parsing.js`, `run-calc.js`
+**Node CLI files** (ESM via npm, all in project root):
+- `run-calc.js` — CLI entry point
+- `node-calculations.js` — Mirror of `calculations.js` with npm imports
+- `node-parsing.js` — Mirror of `parsing.js` with npm imports
+
+**Critical pattern**: Browser and Node files share identical logic but differ only in import source (`https://cdn.jsdelivr.net/npm/@huggingface/gguf@0.4.2/+esm` vs `@huggingface/gguf`). Changes to calculation or parsing logic **must be applied to both file pairs**.
+
+**Gitignored reference dirs**: `llama.cpp/`, `ik_llama.cpp/`, `gguf-parser-go/` — local clones for quantization type reference, not part of the app.
 
 ## Must serve via HTTP
 
@@ -21,10 +30,10 @@ Then visit `http://localhost:8000`.
 
 ```bash
 node run-calc.js bartowski/Llama-3.1-8B-Instruct-GGUF --ctx 8192 --kvTypeK Q8_0
-node run-calc.js --batch testmodels.list
+node run-calc.js --batch testModels.list
 ```
 
-Options: `--ctx N`, `--batchSize N`, `--kvTypeK TYPE`, `--kvTypeV TYPE`. Batch file has one HF repo per line.
+Options: `--ctx N` (default 4096), `--batchSize N` (default 1), `--kvTypeK TYPE` (default F16), `--kvTypeV TYPE` (default F16). Batch file has one HF repo per line, `#` comments supported. Outputs JSON to stdout, progress to stderr.
 
 ## BigInt gotcha
 
@@ -48,17 +57,21 @@ url = path.replace(/\/blob\//, '/resolve/').replace(/#.*$/, '');
 - KV cache and activations always in VRAM
 - VRAM fit check compares against `vramBytes` (not `totalBytes`)
 
-## CDN version pin
-
-`@huggingface/gguf` from `https://cdn.jsdelivr.net/npm/@huggingface/gguf@0.4.2/+esm`. Check updates at `https://data.jsdelivr.com/v1/package/npm/@huggingface/gguf`.
-
 ## Bytes-per-element hardcoded
 
-`GGML_QUANT_SIZES` is NOT exported from the browser build. BPE values are hardcoded as the `BPE` object in `calculations.js` (lines 5–40). Use `GGMLQuantizationType` enum keys as indices.
+`GGML_QUANT_SIZES` is NOT exported from the browser build. BPE values are hardcoded as the `BPE` object in `calculations.js` / `node-calculations.js`. Standard types use `GGMLQuantizationType` enum keys as indices; ik_llama.cpp extensions use numeric IDs (e.g., `151` for Q8_KV). The `BPE` object is the sole source of truth for bytes-per-element.
+
+## CDN version pin
+
+Browser files import from `https://cdn.jsdelivr.net/npm/@huggingface/gguf@0.4.2/+esm`. Check updates at `https://data.jsdelivr.com/v1/package/npm/@huggingface/gguf`.
+
+## Sharded GGUF
+
+Files matching `*-of-*.gguf` are auto-detected as shards in `parseGGUF()`. Calls `ggufAllShards()`, merges tensor infos from all shards, takes metadata from the first shard.
 
 ## Adding a new architecture
 
-Add to the `ARCHITECTURES` registry in `calculations.js`. Each entry declares categories and provides handlers for KV cache, activations, and MoE weights.
+Add to the `ARCHITECTURES` registry in **both** `calculations.js` and `node-calculations.js`. Each entry declares categories and provides handlers for KV cache, activations, and MoE weights.
 
 ### Step 1: Identify the architecture
 
@@ -76,30 +89,36 @@ console.log(Object.keys(r.metadata).filter(k => k.startsWith(r.metadata['general
 | Category | Trigger | What changes |
 |----------|---------|-------------|
 | `mla` | Has `attention.kv_lora_rank` + `attention.key_length_mla` | KV cache uses compressed latent dimensions; activations use `q_lora_rank` + `kv_lora_rank` |
-| `iswa` | Has `attention.sliding_window` or per-layer `head_count_kv` array | Reads `head_count_kv` as array for per-layer GQA |
+| `iswa` | Has `attention.sliding_window` or per-layer `head_count_kv` array | Per-layer GQA; SWA layers use `min(sliding_window, ctxSize)` |
 | `moe` | Has `expert_count > 0` | Expert tensor grouping, VRAM/RAM split for inactive experts |
+| `vl` / `embedding` / `diffusion` | Model type markers | Calculation-only markers, no handler changes |
 
-### Step 3: Add registry entry
+### Step 3: Check for aliases
+
+If the GGUF-returned architecture name differs from the registry key (e.g., hyphens vs underscores), add a mapping to `ARCH_ALIASES`:
+```js
+ARCH_ALIASES = { 'ernie4_5-moe': 'ernie4_5_moe', 'hunyuan-moe': 'hunyuan_moe', 'lfm2moe': 'lfm2_moe' }
+```
+
+### Step 4: Add registry entry
+
+Most architectures reuse the shared `llamaKvCache`, `llamaActivations`, `llamaMoe` handlers. Only add custom handlers for non-standard KV cache (MLA), per-layer heads (ISWA), or special activation patterns:
 
 ```js
 myarch: {
   name: 'myarch',
-  categories: ['transformer', 'moe', 'iswa'],
-  kvCache(meta, ctxSize, kvTypeK, kvTypeV) { /* { bytesK, bytesV, totalBytes, layers, headsK, headsV, totalHeadsKV, avgHeadsKV } */ },
-  activations(meta, ctxSize, batchSize) { /* { totalBytes, perLayerBytes, isMoe, expertCount, expertUsedCount, expertFF } */ },
-  moe(meta, tensorInfos) { /* { expertCount, expertUsedCount, expertWeightBytes, routerBytes, sharedBytes, ... } */ },
-  tensorGroups: {
-    expert: ['*ffn_gate_exps*', '*ffn_up_exps*', '*ffn_down_exps*'],
-    router: ['*ffn_gate_inp*'],
-    shared: ['*ffn_gate_shexp*', '*ffn_up_shexp*', '*ffn_down_shexp*'],
-  },
+  categories: ['transformer', 'moe'],
+  kvCache: llamaKvCache,
+  activations: llamaActivations,
+  moe: llamaMoe,
+  tensorGroups: LLAMA_TENSOR_GROUPS,
 },
 ```
 
 ### Key patterns for tensor matching
 
 - **Expert weights**: `_exps.` in name
-- **Router/gate**: `ffn_gate_inp` or `attn_sinks`
+- **Router/gate**: `ffn_gate_inp` or `attn_sinks` or `altup_router`
 - **Shared experts**: `_shexp.` or `_chexp.`
 - **MoE bias**: `exp_probs_b`
 
@@ -122,7 +141,13 @@ const n_head_kv_arr = Array.isArray(n_head_kv)
 
 **Multiple router tensors**: Gemma4/GPT-OSS have 2 `ffn_gate_inp` per block. Use `.filter()`, not `.find()`.
 
-### Step 4: Test
+**Leading dense blocks**: Some MoE architectures (`ernie4_5_moe`, `hunyuan_moe`, `lfm2_moe`, `afmoe`) have `leading_dense_block_count` — initial layers use standard FFN, later layers are MoE. Activations must split: `denseBytes + moeBytes`.
+
+**Hybrid recurrent/attention**: `lfm2_moe` and `nemotron_h_moe` have per-layer `head_count_kv` where recurrent layers have `n_head_kv == 0` (no KV cache). Only sum KV for layers where `n_head_kv_arr[i] > 0`.
+
+**Mixed DeltaNet/attention**: `qwen35moe` uses `full_attention_interval` — only every Nth layer has KV cache. Activations use `2 * n_embd + expertUsedCount * expertFF` (residual + shared + routed experts).
+
+### Step 5: Test
 
 ```bash
 node --experimental-vm-modules -e "
