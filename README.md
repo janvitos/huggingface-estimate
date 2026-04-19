@@ -69,6 +69,15 @@ llama, mistral3/4, qwen2/3/3.5/3next, qwen2vl, qwen3vl, qwen3moe, qwen35moe, qwe
 
 **rotorquant KV cache:** TURBO2_0, TURBO3_0, TURBO4_0, PLANAR3_0, PLANAR4_0, ISO3_0, ISO4_0
 
+## Resources
+
+The following resources were used in building this tool:
+
+- https://github.com/ggml-org/llama.cpp
+- https://github.com/ikawrakow/ik_llama.cpp
+- https://github.com/johndpope/llama-cpp-turboquant
+- https://www.kaggle.com/datasets/ellimaaac/gpus-specs-from-1986-to-2026
+
 ## See also
 
 - [`AGENTS.md`](AGENTS.md) — Developer notes: adding architectures, BigInt gotchas, tensor matching patterns
