@@ -93,23 +93,41 @@ console.log(Object.keys(r.metadata).filter(k => k.startsWith(r.metadata['general
 
 If the GGUF-returned architecture name differs from the registry key (e.g., hyphens vs underscores), add a mapping to `ARCH_ALIASES`:
 ```js
-ARCH_ALIASES = { 'ernie4_5-moe': 'ernie4_5_moe', 'hunyuan-moe': 'hunyuan_moe', 'lfm2moe': 'lfm2_moe' }
+ARCH_ALIASES = {
+  'ernie4_5-moe': 'ernie4_5_moe',
+  'hunyuan-moe':  'hunyuan_moe',
+  'lfm2moe':      'lfm2_moe',
+}
 ```
 
 ### Step 4: Add registry entry
 
-Most architectures reuse the shared `llamaKvCache`, `llamaActivations`, `llamaMoe` handlers. Only add custom handlers for non-standard KV cache (MLA), per-layer heads (ISWA), or special activation patterns:
+Handlers are assembled from shared builders near the top of `calculations.js`. For a standard transformer, point at the canonical triple:
 
 ```js
 myarch: {
   name: 'myarch',
   categories: ['transformer', 'moe'],
   kvCache: llamaKvCache,
-  activations: llamaActivations,
-  moe: llamaMoe,
+  activations: buildActivations,
+  moe: moeNoShared,           // or moeShexpOnly, or llamaMoe
   tensorGroups: LLAMA_TENSOR_GROUPS,
 },
 ```
+
+The available builders:
+
+| Builder | Use for |
+|---------|---------|
+| `llamaKvCache` | Standard (and GQA) KV cache |
+| `buildKvCache(meta, ctx, kK, kV, opts)` | ISWA, per-layer filter, effective-layer override, etc. |
+| `mlaKvCache` | DeepSeek2 / GLM-DSA latent attention |
+| `buildActivations` | Standard transformer activations (incl. MoE-gated) |
+| `leadingDenseActivations` | MoE with `leading_dense_block_count` |
+| `buildMoe(meta, ti, predicates)` | MoE tensor accounting with custom `isExpert`/`isRouter`/`isShared` |
+| `llamaMoe` | Default MoE with `_exps.` / `ffn_gate_inp` / `_shexp.|_chexp.` |
+| `moeNoShared` | MoE with no shared experts |
+| `moeShexpOnly` | MoE with `_shexp.` shared experts only (no `_chexp.`) |
 
 ### Key patterns for tensor matching
 
@@ -120,28 +138,30 @@ myarch: {
 
 Patterns use glob → regex conversion via `globMatch()`.
 
-### Special cases
+### `buildKvCache` options
 
-**MLA (DeepSeek2-style)**: KV cache uses `kv_lora_rank` for K, `key_length_mla` for V:
-```js
-const totalElemsK = n_layer * kv_lora_rank * ctxSize;
-const totalElemsV = n_layer * key_length_mla * ctxSize;
-```
+All fields optional. Compose them in the handler: `kvCache: (m, c, kK, kV) => buildKvCache(m, c, kK, kV, { ... })`.
 
-**ISWA (Gemma4/Llama4-style)**: `head_count_kv` may be an array (per-layer):
-```js
-const n_head_kv_arr = Array.isArray(n_head_kv)
-  ? (() => { const a = Array(n_layer).fill(n_head[0] || 1); for (let i = 0; i < n_layer; i++) if (n_head_kv[i]) a[i] = Number(n_head_kv[i]); return a; })()
-  : Array(n_layer).fill(n_head_kv);
-```
+| Option | Use for |
+|--------|---------|
+| `iswa: true` | Read `sliding_window` / `sliding_window_pattern`, shrink SWA layer contexts |
+| `swaPeriodDefault: N` | Fallback SWA period when metadata doesn't supply one (gpt-oss: 2, llama4: 4, gemma3n: 5) |
+| `swaDefault: N` | Fallback `sliding_window` value (llama4: 8192) |
+| `effectiveLayers(meta, n_block)` | Override iteration count (gemma4 `shared_kv_layers`, gemma3n `layer_kv_from_start`) |
+| `layerFilter(i)` | Skip layers (qwen35moe keeps only every `full_attention_interval`-th layer) |
 
-**Multiple router tensors**: Gemma4/GPT-OSS have 2 `ffn_gate_inp` per block. Use `.filter()`, not `.find()`.
+Per-layer `head_count_kv == 0` is treated as "no KV cache on this layer" across all options. This handles hybrid recurrent/attention (`lfm2_moe`, `nemotron_h_moe`) without extra config — just declare `kvCache: llamaKvCache`.
 
-**Leading dense blocks**: Some MoE architectures (`ernie4_5_moe`, `hunyuan_moe`, `lfm2_moe`, `afmoe`) have `leading_dense_block_count` — initial layers use standard FFN, later layers are MoE. Activations must split: `denseBytes + moeBytes`.
+### Bespoke activations
 
-**Hybrid recurrent/attention**: `lfm2_moe` and `nemotron_h_moe` have per-layer `head_count_kv` where recurrent layers have `n_head_kv == 0` (no KV cache). Only sum KV for layers where `n_head_kv_arr[i] > 0`.
+Architectures with attention shapes that don't match `buildActivations` or `leadingDenseActivations` keep inline handlers:
 
-**Mixed DeltaNet/attention**: `qwen35moe` uses `full_attention_interval` — only every Nth layer has KV cache. Activations use `2 * n_embd + expertUsedCount * expertFF` (residual + shared + routed experts).
+- **deepseek2**: MLA attention output uses `q_lora_rank + kv_lora_rank`, not `n_embd`.
+- **qwen35moe**: residual + shared + routed experts — `2 * n_embd + expertUsedCount * expertFF`.
+- **glm-dsa**: adds `indexerTopK * 256` for the sparse indexer state.
+- **gemma3n**: multiplies `n_embd` by `altup_num_inputs` (typically 4).
+
+When adding one of these, write the body inline in the registry entry rather than extending `buildActivations` with more options.
 
 ### Step 5: Test
 
