@@ -236,21 +236,21 @@ async function calcModel(repo) {
     ramBytes,
     ramBytesFormatted: formatBytes(ramBytes),
     vramFit: args.vram > 0 ? (() => {
-      const vramAvailBytes = args.vram * 1e9;
+      const vramAvailBytes = args.vram * (1024 ** 3);
       const usagePct = vramBytes / vramAvailBytes * 100;
       return {
-        availableGB: args.vram,
-        requiredGB: +(vramBytes / 1e9).toFixed(2),
+        availableGiB: args.vram,
+        requiredGiB: +(vramBytes / (1024 ** 3)).toFixed(2),
         fits: vramBytes <= vramAvailBytes,
         usagePct: +usagePct.toFixed(1),
       };
     })() : null,
     ramFit: args.ram > 0 && ramBytes > 0 ? (() => {
-      const ramAvailBytes = args.ram * 1e9;
+      const ramAvailBytes = args.ram * (1024 ** 3);
       const usagePct = ramBytes / ramAvailBytes * 100;
       return {
-        availableGB: args.ram,
-        requiredGB: +(ramBytes / 1e9).toFixed(2),
+        availableGiB: args.ram,
+        requiredGiB: +(ramBytes / (1024 ** 3)).toFixed(2),
         fits: ramBytes <= ramAvailBytes,
         usagePct: +usagePct.toFixed(1),
       };
@@ -308,8 +308,8 @@ Arguments:
   --batchSize <N>    Batch size (default: 1)
   --kvTypeK <T>      KV cache K quantization type (name or number, default: F16)
   --kvTypeV <T>      KV cache V quantization type (name or number, default: F16)
-  --vram <N>         Available VRAM in GB (enables VRAM fit check)
-  --ram <N>          Available system RAM in GB (enables RAM fit check)
+  --vram <N>         Available VRAM in GiB (enables VRAM fit check)
+  --ram <N>          Available system RAM in GiB (enables RAM fit check)
   --mmproj <file>    mmproj GGUF filename within the repo (e.g. mmproj-F16.gguf)
   --mmprojDevice <d> Where to place mmproj: vram (default) or ram (--no-mmproj-offload)
 

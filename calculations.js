@@ -848,12 +848,16 @@ export function calcMmProj(metadata, tensorInfos) {
 }
 
 // ── Format helpers ──
-// Uses base-10 units (1 GB = 1e9 bytes) to match vram/ram inputs; don't "fix" to base-2.
+// Uses base-2 units (1 GiB = 2^30 bytes) to match VRAM/RAM inputs.
 export function formatBytes(bytes) {
-  if (bytes < 1e6) return `${(bytes / 1e3).toFixed(1)} KB`;
-  if (bytes < 1e9) return `${(bytes / 1e6).toFixed(1)} MB`;
-  if (bytes < 1e12) return `${(bytes / 1e9).toFixed(2)} GB`;
-  return `${(bytes / 1e12).toFixed(2)} TB`;
+  const KiB = 1024;
+  const MiB = 1024 ** 2;
+  const GiB = 1024 ** 3;
+  const TiB = 1024 ** 4;
+  if (bytes < MiB) return `${(bytes / KiB).toFixed(1)} KiB`;
+  if (bytes < GiB) return `${(bytes / MiB).toFixed(1)} MiB`;
+  if (bytes < TiB) return `${(bytes / GiB).toFixed(2)} GiB`;
+  return `${(bytes / TiB).toFixed(2)} TiB`;
 }
 
 export function formatElements(n) {

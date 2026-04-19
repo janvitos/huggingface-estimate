@@ -464,11 +464,11 @@ button.resolve-btn {
 
         <div class="form-row">
           <div class="form-group">
-            <label for="vram">Available VRAM (GB, optional)</label>
+            <label for="vram">Available VRAM (GiB, optional)</label>
             <input type="number" id="vram" placeholder="e.g. 24" min="0" step="1" />
           </div>
           <div class="form-group">
-            <label for="ram">Available RAM (GB, optional)</label>
+            <label for="ram">Available RAM (GiB, optional)</label>
             <input type="number" id="ram" placeholder="e.g. 32" min="0" step="1" />
           </div>
         </div>
@@ -1140,7 +1140,7 @@ function renderResults() {
     // VRAM bar
     if (showVramBar) {
       $('#vramFitSection').style.display = '';
-      const vramGBNum = vramBytes / 1e9;
+      const vramGBNum = vramBytes / (1024 ** 3);
       const usagePct = (vramGBNum / vramGB * 100);
       const clampedPct = Math.min(usagePct, 100);
 
@@ -1153,19 +1153,19 @@ function renderResults() {
       if (usagePct <= 80) {
         bar.className = 'vram-bar green';
         status.className = 'vram-status green';
-        status.textContent = `\u2713 Fits comfortably \u2014 ${formatBytes(vramBytes)} of ${vramGB} GB (${usagePct.toFixed(0)}% used)`;
+        status.textContent = `\u2713 Fits comfortably \u2014 ${formatBytes(vramBytes)} of ${vramGB} GiB (${usagePct.toFixed(0)}% used)`;
       } else if (usagePct <= 100) {
         bar.className = 'vram-bar yellow';
         status.className = 'vram-status yellow';
-        status.textContent = `\u26A0 Marginal \u2014 ${formatBytes(vramBytes)} of ${vramGB} GB (${usagePct.toFixed(0)}% used)`;
+        status.textContent = `\u26A0 Marginal \u2014 ${formatBytes(vramBytes)} of ${vramGB} GiB (${usagePct.toFixed(0)}% used)`;
       } else {
         bar.className = 'vram-bar red';
         status.className = 'vram-status red';
-        status.textContent = `\u2717 Does not fit \u2014 ${formatBytes(vramBytes)} needed, ${vramGB} GB available (${(usagePct - 100).toFixed(0)}% over)`;
+        status.textContent = `\u2717 Does not fit \u2014 ${formatBytes(vramBytes)} needed, ${vramGB} GiB available (${(usagePct - 100).toFixed(0)}% over)`;
       }
 
       barText.textContent = `${usagePct.toFixed(1)}%`;
-      $('#vramFitLabel').textContent = `${formatBytes(vramBytes)} / ${vramGB} GB`;
+      $('#vramFitLabel').textContent = `${formatBytes(vramBytes)} / ${vramGB} GiB`;
     } else {
       $('#vramFitSection').style.display = 'none';
     }
@@ -1173,7 +1173,7 @@ function renderResults() {
     // RAM bar
     if (showRamBar) {
       $('#ramFitSection').style.display = '';
-      const ramGBNum = ramBytes / 1e9;
+      const ramGBNum = ramBytes / (1024 ** 3);
       const usagePct = (ramGBNum / ramGB * 100);
       const clampedPct = Math.min(usagePct, 100);
 
@@ -1186,19 +1186,19 @@ function renderResults() {
       if (usagePct <= 80) {
         bar.className = 'vram-bar green';
         status.className = 'vram-status green';
-        status.textContent = `\u2713 Fits comfortably \u2014 ${formatBytes(ramBytes)} of ${ramGB} GB (${usagePct.toFixed(0)}% used)`;
+        status.textContent = `\u2713 Fits comfortably \u2014 ${formatBytes(ramBytes)} of ${ramGB} GiB (${usagePct.toFixed(0)}% used)`;
       } else if (usagePct <= 100) {
         bar.className = 'vram-bar yellow';
         status.className = 'vram-status yellow';
-        status.textContent = `\u26A0 Marginal \u2014 ${formatBytes(ramBytes)} of ${ramGB} GB (${usagePct.toFixed(0)}% used)`;
+        status.textContent = `\u26A0 Marginal \u2014 ${formatBytes(ramBytes)} of ${ramGB} GiB (${usagePct.toFixed(0)}% used)`;
       } else {
         bar.className = 'vram-bar red';
         status.className = 'vram-status red';
-        status.textContent = `\u2717 Does not fit \u2014 ${formatBytes(ramBytes)} needed, ${ramGB} GB available (${(usagePct - 100).toFixed(0)}% over)`;
+        status.textContent = `\u2717 Does not fit \u2014 ${formatBytes(ramBytes)} needed, ${ramGB} GiB available (${(usagePct - 100).toFixed(0)}% over)`;
       }
 
       barText.textContent = `${usagePct.toFixed(1)}%`;
-      $('#ramFitLabel').textContent = `${formatBytes(ramBytes)} / ${ramGB} GB`;
+      $('#ramFitLabel').textContent = `${formatBytes(ramBytes)} / ${ramGB} GiB`;
     } else {
       $('#ramFitSection').style.display = 'none';
     }
