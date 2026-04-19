@@ -7,12 +7,41 @@ import {
   calcActivations,
   calcMoEInfo,
   calcMmProj,
+  estimatePerformance,
   formatBytes,
   formatElements,
   QUANT_NAMES,
   getMeta,
   BPE,
 } from './calculations.js';
+import { CPU_PRESETS, findCpuPreset } from './hardware-presets.js';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+let GPU_PRESETS = null;
+function loadGpuPresets() {
+  if (GPU_PRESETS) return GPU_PRESETS;
+  try {
+    GPU_PRESETS = JSON.parse(readFileSync(join(__dirname, 'gpu-data.json'), 'utf8'));
+  } catch { GPU_PRESETS = []; }
+  return GPU_PRESETS;
+}
+function findGpuPreset(query) {
+  if (!query) return null;
+  const list = loadGpuPresets();
+  const q = query.toLowerCase();
+  const exactId = list.find(g => g.id === q);
+  if (exactId) return exactId;
+  const exactName = list.find(g => g.name.toLowerCase() === q);
+  if (exactName) return exactName;
+  // Among substring matches, prefer the shortest name (most specific).
+  const subs = list.filter(g => g.name.toLowerCase().includes(q));
+  if (subs.length === 0) return null;
+  subs.sort((a, b) => a.name.length - b.name.length);
+  return subs[0];
+}
 
 // ── CLI argument parsing ──
 function parseKvType(val, flag) {
@@ -37,6 +66,13 @@ function parseArgs(argv) {
     ram: 0,
     mmproj: null,
     mmprojDevice: 'vram',
+    gpu: null,
+    gpuFlops: null,
+    gpuBw: null,
+    cpu: null,
+    cpuFlops: null,
+    ramBw: null,
+    ngl: 'auto',
   };
 
   let i = 2;
@@ -65,6 +101,21 @@ function parseArgs(argv) {
         process.exit(1);
       }
       args.mmprojDevice = v;
+    } else if (arg === '--gpu') {
+      args.gpu = argv[++i];
+    } else if (arg === '--gpu-flops') {
+      args.gpuFlops = parseFloat(argv[++i]);
+    } else if (arg === '--gpu-bw') {
+      args.gpuBw = parseFloat(argv[++i]);
+    } else if (arg === '--cpu') {
+      args.cpu = argv[++i];
+    } else if (arg === '--cpu-flops') {
+      args.cpuFlops = parseFloat(argv[++i]);
+    } else if (arg === '--ram-bw') {
+      args.ramBw = parseFloat(argv[++i]);
+    } else if (arg === '--ngl') {
+      const v = argv[++i];
+      args.ngl = v === 'auto' ? 'auto' : parseInt(v, 10);
     } else if (!arg.startsWith('-')) {
       args.repo = arg;
     }
@@ -72,6 +123,37 @@ function parseArgs(argv) {
   }
 
   return args;
+}
+
+// Resolve hardware presets + manual overrides into a device spec for the
+// performance estimator. Returns null if no GPU spec was supplied.
+function resolveDevice(args) {
+  const gpuPreset = args.gpu ? findGpuPreset(args.gpu) : null;
+  if (args.gpu && !gpuPreset && (args.gpuFlops == null || args.gpuBw == null)) {
+    console.error(`Warning: GPU preset "${args.gpu}" not found in gpu-data.json.`);
+  }
+  const gpuFlops = args.gpuFlops != null ? args.gpuFlops : (gpuPreset ? gpuPreset.fp16Tflops : null);
+  const gpuBw = args.gpuBw != null ? args.gpuBw : (gpuPreset ? gpuPreset.memBwGBps : null);
+  if (gpuFlops == null || gpuBw == null) return null;
+
+  const cpuPreset = args.cpu ? findCpuPreset(args.cpu) : null;
+  if (args.cpu && !cpuPreset && (args.cpuFlops == null || args.ramBw == null)) {
+    console.error(`Warning: CPU preset "${args.cpu}" not found in hardware-presets.js.`);
+  }
+  const cpuFlops = args.cpuFlops != null ? args.cpuFlops : (cpuPreset ? cpuPreset.fp16Tflops : null);
+  const ramBw = args.ramBw != null ? args.ramBw : (cpuPreset ? cpuPreset.defaultRamBwGBps : null);
+  const cpu = (cpuFlops != null && ramBw != null) ? { flopsFp16Tflops: cpuFlops, bwGBps: ramBw } : null;
+
+  return {
+    gpu: {
+      flopsFp16Tflops: gpuFlops,
+      bwGBps: gpuBw,
+      vramBytes: args.vram > 0 ? args.vram * (1024 ** 3) : 0,
+      preset: gpuPreset,
+    },
+    cpu: cpu ? { ...cpu, preset: cpuPreset } : null,
+    nGpuLayers: args.ngl === 'auto' ? 'auto' : args.ngl,
+  };
 }
 
 // ── Main calculation for a single model ──
@@ -144,6 +226,43 @@ async function calcModel(repo) {
 
   // Total parameters
   const totalParams = tensorInfos.reduce((s, t) => s + t.shape.map(Number).reduce((a, b) => a * b, 1), 0);
+
+  // Performance estimate (optional — omitted when no GPU flags supplied)
+  const device = resolveDevice(args);
+  let performance = null;
+  if (device) {
+    const perf = estimatePerformance({
+      metadata, tensorInfos, ctx: args.ctx, batchSize: args.batchSize,
+      kv: kvCache, moe: moeInfo, activations, mmproj: mmProjInfo,
+      device,
+    });
+    performance = {
+      decodeTPS: +perf.decodeTPS.toFixed(2),
+      prefillTPS: +perf.prefillTPS.toFixed(2),
+      ttftSec: +perf.ttftSec.toFixed(4),
+      nGpuLayers: perf.nGpuLayers,
+      nCpuLayers: perf.nCpuLayers,
+      autoSplit: perf.autoSplit,
+      perLayerMs: {
+        gpu: +perf.perLayerMs.gpu.toFixed(3),
+        cpu: +perf.perLayerMs.cpu.toFixed(3),
+      },
+      bottleneck: perf.bottleneck,
+      gpu: {
+        name: device.gpu.preset ? device.gpu.preset.name : 'Custom',
+        id: device.gpu.preset ? device.gpu.preset.id : null,
+        fp16Tflops: device.gpu.flopsFp16Tflops,
+        memBwGBps: device.gpu.bwGBps,
+        vramGiB: device.gpu.vramBytes ? +(device.gpu.vramBytes / (1024 ** 3)).toFixed(2) : 0,
+      },
+      cpu: device.cpu ? {
+        name: device.cpu.preset ? device.cpu.preset.name : 'Custom',
+        id: device.cpu.preset ? device.cpu.preset.id : null,
+        fp16Tflops: device.cpu.flopsFp16Tflops,
+        ramBwGBps: device.cpu.bwGBps,
+      } : null,
+    };
+  }
 
   return {
     repo,
@@ -255,6 +374,7 @@ async function calcModel(repo) {
         usagePct: +usagePct.toFixed(1),
       };
     })() : null,
+    performance,
   };
 }
 
@@ -298,7 +418,7 @@ if (args.batch) {
     process.exit(1);
   });
 } else {
-  console.error(`Usage: node run-calc.js <repo> [--ctx N] [--batchSize N] [--kvTypeK TYPE] [--kvTypeV TYPE] [--vram N] [--ram N] [--mmproj FILE] [--mmprojDevice vram|ram]
+  console.error(`Usage: node run-calc.js <repo> [options]
        node run-calc.js --batch testModels.list
 
 Arguments:
@@ -308,10 +428,19 @@ Arguments:
   --batchSize <N>    Batch size (default: 1)
   --kvTypeK <T>      KV cache K quantization type (name or number, default: F16)
   --kvTypeV <T>      KV cache V quantization type (name or number, default: F16)
-  --vram <N>         Available VRAM in GiB (enables VRAM fit check)
+  --vram <N>         Available VRAM in GiB (enables VRAM fit check + performance split)
   --ram <N>          Available system RAM in GiB (enables RAM fit check)
   --mmproj <file>    mmproj GGUF filename within the repo (e.g. mmproj-F16.gguf)
   --mmprojDevice <d> Where to place mmproj: vram (default) or ram (--no-mmproj-offload)
+
+Performance estimation (supply --gpu or --gpu-flops + --gpu-bw to enable):
+  --gpu <name|id>    GPU preset from gpu-data.json (e.g. "RTX 4090", "nvidia-geforce-rtx-4090")
+  --gpu-flops <TF>   Override GPU FP16 TFLOPS
+  --gpu-bw <GB/s>    Override GPU memory bandwidth
+  --cpu <name|id>    CPU preset from hardware-presets.js (e.g. "Ryzen 9 7950X")
+  --cpu-flops <TF>   Override CPU FP16 TFLOPS
+  --ram-bw <GB/s>    Override system RAM bandwidth
+  --ngl <n|auto>     GPU layer override (default: auto, sized from --vram)
 
 Quantization type names: F32, F16, BF16, Q8_0, Q4_0, Q4_1, Q5_0, Q5_1, Q4_K, Q5_K, Q6_K, Q8_K, ...
 `);

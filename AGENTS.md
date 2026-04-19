@@ -31,6 +31,8 @@ node run-calc.js --batch testModels.list
 
 Options: `--ctx N` (default 4096), `--batchSize N` (default 1), `--kvTypeK TYPE` (default F16), `--kvTypeV TYPE` (default F16), `--mmproj FILE`, `--mmprojDevice vram|ram` (default vram). Batch file has one HF repo per line, `#` comments supported. Outputs JSON to stdout, progress to stderr.
 
+Performance flags (add a `performance` block to the JSON): `--gpu <name|id>` (fuzzy-matches `gpu-data.json`), `--cpu <name|id>` (matches `hardware-presets.js`), `--gpu-flops`, `--gpu-bw`, `--cpu-flops`, `--ram-bw` for manual overrides, `--ngl <n|auto>`. Omit all GPU flags to disable the performance block (preserves the pre-feature output shape).
+
 ## BigInt gotcha
 
 `@huggingface/gguf` returns `tensorInfos[].shape` as `bigint[]`. Never multiply a `bigint` by a `number` (BPE values are `number`). Always convert first:
@@ -193,6 +195,16 @@ Then open in browser and load the model to verify.
 ### Fallback
 
 Unknown architectures fall back to the `llama` handler. A warning logs to the console.
+
+## Hardware presets (tokens/sec estimator)
+
+Three sources feed the estimator:
+
+- **`gpu-data.json`** — generated from `gpu_1986-2026.csv` by `scripts/build-gpu-list.js`. Regenerate after editing the CSV: `node scripts/build-gpu-list.js`. Filters to NVIDIA 1000-series+, AMD RX 5000+/MI, Intel Arc. Apple M-series GPU isn't in the CSV uniformly — the per-CPU `defaultRamBwGBps` value covers unified memory.
+- **`hardware-presets.js`** — hand-curated `CPU_PRESETS` and `RAM_PRESETS`. CPU FP16 TFLOPS = `cores × boost_GHz × fp16_per_cycle` (AVX2 → 16, AVX-512 → 32, NEON → 8). Pessimistic vs. actual tensor-optimized kernels but bandwidth is typically the decode bottleneck anyway.
+- **`calcPerLayerFootprint` / `estimatePerformance`** in `calculations.js` — group tensors by `/^blk\.(\d+)\./`, fold active-expert fraction into per-layer byte totals for MoE layers, then iterate `max(FLOPs/FLOPS, bytes/BW)` per layer. Bottleneck label compares aggregate compute-time vs. BW-time per device side; `cpu-dram-spill` fires when CPU layers exceed 50% of total decode time.
+
+**FP16 rate caveat for data-center cards**: the CSV reports shader-rate FP16 (often 1:64 of tensor-core rate) for H100 / B200. Preprocessor uses `max(BF16, FP16 if ≥ 1.5× FP32, FP32 × 2)` to approximate the tensor-core path, but the result is conservative for Hopper/Blackwell — users can override with `--gpu-flops`.
 
 ### Example model and quantization refrence code
 

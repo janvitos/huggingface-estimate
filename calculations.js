@@ -847,6 +847,213 @@ export function calcMmProj(metadata, tensorInfos) {
   };
 }
 
+// ── Performance (tokens/sec) estimator ──
+// Speed-of-light per-layer throughput model: each token's per-layer latency is
+// max(FLOPs/FLOPS, bytes/BW) on the device hosting that layer. Total decode
+// latency is the sum across layers (dense partial offload and MoE active-
+// expert offload both fall out of this formulation). See
+// gguf-parser-go/file_estimate__llamacpp.go:883-909 for the reference.
+
+function layerIndexFromTensorName(name) {
+  const m = /^blk\.(\d+)\./.exec(name);
+  return m ? parseInt(m[1], 10) : -1;
+}
+
+// Compute per-layer byte/element footprint and global (non-block) output
+// tensors. For MoE layers, expert tensors contribute their active fraction
+// (expertUsedCount / expertCount) to the per-token-streamed totals, since
+// llama.cpp only reads the selected experts each step.
+export function calcPerLayerFootprint(metadata, tensorInfos, kv, moe) {
+  const arch = getModelArch(metadata);
+  const handler = getArchHandler(arch);
+  const nLayers = getMeta(metadata, `${arch}.block_count`) || (kv ? kv.layers : 0);
+  const expertCount = moe ? moe.expertCount : 0;
+  const expertUsed = moe ? moe.expertUsedCount : 0;
+  const expertFrac = expertCount > 0 ? expertUsed / expertCount : 0;
+  const expertPatterns = handler.tensorGroups ? (handler.tensorGroups.expert || []) : [];
+  const isExpertTensor = (name) => expertPatterns.some(p => globMatch(p, name));
+
+  const layerBytes = new Array(nLayers).fill(0);
+  const layerActiveBytes = new Array(nLayers).fill(0);
+  const layerElems = new Array(nLayers).fill(0);
+  const layerActiveElems = new Array(nLayers).fill(0);
+  let outputBytes = 0, outputElems = 0;
+
+  for (const t of tensorInfos) {
+    const idx = layerIndexFromTensorName(t.name);
+    const elems = tensorElems(t);
+    const bytes = elems * (BPE[t.dtype] || 0);
+    if (idx < 0 || idx >= nLayers) {
+      outputBytes += bytes;
+      outputElems += elems;
+      continue;
+    }
+    layerBytes[idx] += bytes;
+    layerElems[idx] += elems;
+    if (expertCount > 0 && isExpertTensor(t.name)) {
+      layerActiveBytes[idx] += bytes * expertFrac;
+      layerActiveElems[idx] += elems * expertFrac;
+    } else {
+      layerActiveBytes[idx] += bytes;
+      layerActiveElems[idx] += elems;
+    }
+  }
+
+  const kvBytesPerLayer = nLayers > 0 && kv ? kv.totalBytes / nLayers : 0;
+
+  return {
+    nLayers,
+    layerBytes, layerActiveBytes,
+    layerElems, layerActiveElems,
+    kvBytesPerLayer,
+    outputBytes, outputElems,
+  };
+}
+
+// Greedy VRAM fill: fit contiguous layers 0..n-1 onto GPU, the rest fall
+// to CPU. Output weights + activations reserved up front (mirrors llama.cpp's
+// `-ngl` heuristic, which always keeps the output layer on the offload
+// target when possible).
+export function computeOffloadSplit({ vramBytes, footprint, activationBytes = 0, nLayerOverride }) {
+  const { nLayers, layerActiveBytes, kvBytesPerLayer, outputBytes } = footprint;
+  if (nLayerOverride != null && nLayerOverride !== 'auto') {
+    const n = Math.max(0, Math.min(nLayers, Number(nLayerOverride)));
+    return { nGpuLayers: n, nCpuLayers: nLayers - n, auto: false };
+  }
+  if (!vramBytes || vramBytes <= 0) {
+    return { nGpuLayers: 0, nCpuLayers: nLayers, auto: true };
+  }
+  let remaining = vramBytes - outputBytes - activationBytes;
+  let n = 0;
+  for (let i = 0; i < nLayers; i++) {
+    const need = layerActiveBytes[i] + kvBytesPerLayer;
+    if (remaining >= need) { remaining -= need; n++; } else break;
+  }
+  return { nGpuLayers: n, nCpuLayers: nLayers - n, auto: true };
+}
+
+// Estimate decode / prefill / TTFT for a given hardware topology.
+//
+// device = {
+//   gpu: { flopsFp16Tflops, bwGBps, vramBytes },
+//   cpu: { flopsFp16Tflops, bwGBps } | null,
+//   nGpuLayers: number | 'auto'
+// }
+//
+// Returns SI units internally (seconds, bytes, FLOPS). Formatting is done by
+// callers — same pattern as calcWeightSize / calcKVCache.
+export function estimatePerformance({
+  metadata, tensorInfos, ctx, batchSize = 1,
+  kv, moe, activations, mmproj, device,
+}) {
+  const footprint = calcPerLayerFootprint(metadata, tensorInfos, kv, moe);
+  const actBytes = activations ? activations.totalBytes : 0;
+  const mmprojBytes = mmproj ? (mmproj.weightBytes + (mmproj.perImageActBytes || 0)) : 0;
+
+  const gpuFlops = device.gpu.flopsFp16Tflops * 1e12;
+  const gpuBw = device.gpu.bwGBps * 1e9;
+  const cpu = device.cpu;
+  const cpuFlops = cpu ? cpu.flopsFp16Tflops * 1e12 : 0;
+  const cpuBw = cpu ? cpu.bwGBps * 1e9 : 0;
+
+  const vramBytes = device.gpu.vramBytes || 0;
+  const reservedGpuBytes = actBytes + (device.mmprojOnGpu !== false ? mmprojBytes : 0);
+  const split = computeOffloadSplit({
+    vramBytes, footprint,
+    activationBytes: reservedGpuBytes,
+    nLayerOverride: device.nGpuLayers,
+  });
+  const { nGpuLayers, nCpuLayers, auto } = split;
+
+  const { nLayers, layerActiveBytes, layerActiveElems, kvBytesPerLayer, outputBytes, outputElems } = footprint;
+
+  // Per-token latency — sum of per-layer max(compute, bandwidth)
+  let tDecodeGpu = 0, tDecodeCpu = 0;
+  let tPrefillGpu = 0, tPrefillCpu = 0;
+  let gpuFlopsTime = 0, gpuBwTime = 0, cpuFlopsTime = 0, cpuBwTime = 0;
+
+  const cpuAvailable = cpu && cpuFlops > 0 && cpuBw > 0;
+
+  for (let i = 0; i < nLayers; i++) {
+    const onGpu = i < nGpuLayers;
+    const wBytes = layerActiveBytes[i];
+    const params = layerActiveElems[i];
+    const kvB = kvBytesPerLayer;
+
+    // Decode (batch = 1)
+    const flopsDec = 2 * params;
+    const bytesDec = wBytes + kvB;
+    // Prefill (batch = ctx)
+    const flopsPre = 2 * params * ctx;
+    const bytesPre = wBytes + kvB; // KV already sized for full ctx; weights stream once per chunk
+
+    if (onGpu) {
+      tDecodeGpu += Math.max(flopsDec / gpuFlops, bytesDec / gpuBw);
+      tPrefillGpu += Math.max(flopsPre / gpuFlops, bytesPre / gpuBw);
+      gpuFlopsTime += flopsDec / gpuFlops;
+      gpuBwTime += bytesDec / gpuBw;
+    } else if (cpuAvailable) {
+      tDecodeCpu += Math.max(flopsDec / cpuFlops, bytesDec / cpuBw);
+      tPrefillCpu += Math.max(flopsPre / cpuFlops, bytesPre / cpuBw);
+      cpuFlopsTime += flopsDec / cpuFlops;
+      cpuBwTime += bytesDec / cpuBw;
+    }
+  }
+
+  // Output layer (lm_head + embeddings): assume GPU residence — llama.cpp
+  // pins these when any offload is requested.
+  const tOutDec = Math.max((2 * outputElems) / gpuFlops, outputBytes / gpuBw);
+  const tOutPre = Math.max((2 * outputElems * ctx) / gpuFlops, outputBytes / gpuBw);
+
+  // Boundary transfer: when layers straddle GPU↔CPU, the activation vector
+  // crosses the PCIe bus once per token. Assume PCIe 4.0 x16 ≈ 32 GB/s if
+  // no CPU bandwidth is lower. For decode this is one n_embd-sized vector;
+  // for prefill it scales with ctx.
+  const n_embd = getMeta(metadata, `${getModelArch(metadata)}.embedding_length`) || 0;
+  const boundaryBytes = n_embd * 2; // bf16/fp16 activation
+  const boundaryBw = Math.min(32e9, cpuBw || 32e9);
+  const tBoundaryDec = (nGpuLayers > 0 && nCpuLayers > 0) ? boundaryBytes / boundaryBw : 0;
+  const tBoundaryPre = tBoundaryDec * ctx;
+
+  const tDecode = tDecodeGpu + tDecodeCpu + tOutDec + tBoundaryDec;
+  const tPrefill = tPrefillGpu + tPrefillCpu + tOutPre + tBoundaryPre;
+
+  // Bottleneck classification
+  const gpuBottleneck = nGpuLayers > 0
+    ? (gpuFlopsTime > gpuBwTime ? 'compute' : 'bandwidth')
+    : null;
+  const cpuBottleneck = nCpuLayers > 0 && cpuAvailable
+    ? (cpuFlopsTime > cpuBwTime ? 'compute' : 'bandwidth')
+    : null;
+  let overall;
+  if (nCpuLayers > 0 && cpuAvailable && tDecodeCpu > 0.5 * tDecode) overall = 'cpu-dram-spill';
+  else if (nCpuLayers > 0 && !cpuAvailable) overall = 'cpu-layers-unrun';
+  else overall = gpuBottleneck || 'n/a';
+
+  return {
+    decodeTPS: tDecode > 0 ? 1 / tDecode : 0,
+    prefillTPS: tPrefill > 0 ? ctx / tPrefill : 0,
+    ttftSec: tPrefill,
+    nGpuLayers, nCpuLayers, autoSplit: auto,
+    perLayerMs: {
+      gpu: nGpuLayers > 0 ? (tDecodeGpu / nGpuLayers) * 1000 : 0,
+      cpu: nCpuLayers > 0 ? (tDecodeCpu / nCpuLayers) * 1000 : 0,
+    },
+    bottleneck: { gpu: gpuBottleneck, cpu: cpuBottleneck, overall },
+    // Raw timing breakdown (seconds)
+    timing: {
+      decodeGpu: tDecodeGpu, decodeCpu: tDecodeCpu,
+      output: tOutDec, boundary: tBoundaryDec,
+      decodeTotal: tDecode, prefillTotal: tPrefill,
+    },
+    footprint: {
+      nLayers, outputBytes,
+      avgLayerActiveBytes: nLayers > 0 ? layerActiveBytes.reduce((a, b) => a + b, 0) / nLayers : 0,
+      kvBytesPerLayer,
+    },
+  };
+}
+
 // ── Format helpers ──
 // Uses base-2 units (1 GiB = 2^30 bytes) to match VRAM/RAM inputs.
 export function formatBytes(bytes) {

@@ -25,6 +25,8 @@ node run-calc.js --batch testModels.list
 
 Options: `--ctx N`, `--batchSize N`, `--kvTypeK TYPE`, `--kvTypeV TYPE`, `--vram GB`, `--ram GB`, `--mmproj FILE`, `--mmprojDevice vram|ram`. Passing `--vram` / `--ram` adds a fit check to the JSON output. Batch file has one HF repo per line (`#` for comments). KV cache types include F16, F32, BF16, Q8_0, Q4_0, Q4_1, IQ4_NL, Q5_0, Q5_1, Q8_KV, Q8_KV_R8, plus rotorquant (TURBO2_0/3_0/4_0, PLANAR3_0/4_0, ISO3_0/4_0).
 
+Performance flags: `--gpu <name>` (e.g. `"RTX 4090"`, matches `gpu-data.json`), `--cpu <name>` (e.g. `"Ryzen 9 7950X"`, matches `hardware-presets.js`), `--gpu-flops`, `--gpu-bw`, `--cpu-flops`, `--ram-bw` (manual overrides), `--ngl <n|auto>` (GPU layer count; auto uses `--vram`). Supplying any GPU spec enables a `performance` block in the JSON output with decode/prefill/TTFT and layer split.
+
 ## What it calculates
 
 | Component | Where | Details |
@@ -33,6 +35,7 @@ Options: `--ctx N`, `--batchSize N`, `--kvTypeK TYPE`, `--kvTypeV TYPE`, `--vram
 | **KV cache** | VRAM | Separate K and V quantization. `layers × kv_heads × head_size × context × bytes_per_elem` per cache |
 | **Activations** | VRAM | `layers × batch × (hidden + ff_size) × 4` bytes (FP32). For MoE, uses `expert_used_count × expert_ff_size` |
 | **Multimodal projector (mmproj)** | VRAM default, RAM with `--no-mmproj-offload` | Weights + per-image output activation (`n_output_tokens × projection_dim × 4` bytes). `n_output_tokens` is arch-specific, mirroring `clip_n_output_tokens()` from llama.cpp |
+| **Tokens/sec throughput** | Supply a GPU preset (+ optional CPU for spill) | Per-layer speed-of-light: `t_layer = max(FLOPs/FLOPS, bytes/BW)` on whichever device hosts the layer. Decode TPS = `1 / Σ t_layer`. Prefill scales FLOPs by `ctx`; TTFT is its wall time. Dense VRAM spill becomes `n_gpu` / `n_cpu` layer partitioning, MoE uses active-expert streaming. **This is a theoretical upper bound** — real llama.cpp runs typically hit 40–70% of SOL. Upgrade lever is named via `bottleneck`: `compute` / `bandwidth` / `cpu-dram-spill` |
 
 ## Multimodal projector (mmproj) support
 

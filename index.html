@@ -502,6 +502,42 @@ button.resolve-btn {
 
         <hr class="divider">
 
+        <div class="panel-title" style="margin-bottom:8px"><span class="icon">&#x26A1;</span> Hardware (tokens/sec)</div>
+        <div class="form-group">
+          <label for="gpuPreset">GPU preset</label>
+          <select id="gpuPreset"><option value="">— None (skip perf) —</option></select>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="gpuFlops">GPU FP16 TFLOPS</label>
+            <input type="number" id="gpuFlops" placeholder="e.g. 165" min="0" step="0.1" />
+          </div>
+          <div class="form-group">
+            <label for="gpuBw">GPU mem BW (GB/s)</label>
+            <input type="number" id="gpuBw" placeholder="e.g. 1008" min="0" step="1" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="cpuPreset">CPU preset (optional, for spill)</label>
+          <select id="cpuPreset"><option value="">— None (GPU only) —</option></select>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="cpuFlops">CPU FP16 TFLOPS</label>
+            <input type="number" id="cpuFlops" placeholder="e.g. 2.75" min="0" step="0.01" />
+          </div>
+          <div class="form-group">
+            <label for="ramBw">RAM BW (GB/s)</label>
+            <input type="number" id="ramBw" placeholder="e.g. 96" min="0" step="1" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="nglOverride">GPU layers (auto if empty)</label>
+          <input type="text" id="nglOverride" placeholder="auto" />
+        </div>
+
+        <hr class="divider">
+
         <div style="margin-top:12px">
           <button id="calcBtn" style="width:100%">Calculate Memory</button>
         </div>
@@ -691,6 +727,43 @@ button.resolve-btn {
             <div class="vram-status green" id="ramStatus">-</div>
           </div>
         </div>
+
+        <!-- Performance -->
+        <div class="panel hidden" id="perfPanel" style="margin-top:12px">
+          <div class="panel-title"><span class="icon">&#x26A1;</span> Performance (estimated, SOL upper bound)</div>
+          <div class="result-row">
+            <span class="label">Decode throughput</span>
+            <span class="value" id="perfDecode" style="color:var(--accent)">-</span>
+          </div>
+          <div class="result-row">
+            <span class="label">Prefill throughput</span>
+            <span class="value" id="perfPrefill">-</span>
+          </div>
+          <div class="result-row">
+            <span class="label">Time to first token</span>
+            <span class="value" id="perfTtft">-</span>
+          </div>
+          <hr class="divider">
+          <div class="result-row">
+            <span class="label">Layer split (GPU / CPU)</span>
+            <span class="value" id="perfSplit">-</span>
+          </div>
+          <div class="result-row indent">
+            <span class="label">GPU per-layer</span>
+            <span class="value" id="perfGpuLayer">-</span>
+          </div>
+          <div class="result-row indent">
+            <span class="label">CPU per-layer</span>
+            <span class="value" id="perfCpuLayer">-</span>
+          </div>
+          <div class="result-row">
+            <span class="label">Bottleneck</span>
+            <span class="value" id="perfBottleneck">-</span>
+          </div>
+          <div class="result-row" style="font-size:0.75rem;color:var(--text2);margin-top:6px">
+            <span id="perfHardware">-</span>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -698,7 +771,15 @@ button.resolve-btn {
 
 <script type="module">
 import { GGMLQuantizationType, KV_VALID_QUANTS, parseGGUF, resolveHFModel, buildResolveUrl } from './parsing.js';
-import { QUANT_NAMES, getArchHandler, getModelArch, getMeta, calcWeightSize, calcKVCache, calcActivations, calcMoEInfo, calcMmProj, formatBytes, formatElements } from './calculations.js';
+import { QUANT_NAMES, getArchHandler, getModelArch, getMeta, calcWeightSize, calcKVCache, calcActivations, calcMoEInfo, calcMmProj, estimatePerformance, formatBytes, formatElements } from './calculations.js';
+import { CPU_PRESETS } from './hardware-presets.js';
+
+// GPU preset data (loaded once from gpu-data.json)
+let GPU_PRESETS = [];
+fetch('./gpu-data.json')
+  .then(r => r.ok ? r.json() : [])
+  .then(d => { GPU_PRESETS = d; populateGpuSelect(); })
+  .catch(() => { GPU_PRESETS = []; });
 
 // ── DOM refs ──
 const $ = (s) => document.querySelector(s);
@@ -721,6 +802,14 @@ const vramEl = $('#vram');
 const ramEl = $('#ram');
 const kvTypeKEl = $('#kvTypeK');
 const kvTypeVEl = $('#kvTypeV');
+const gpuPresetEl = $('#gpuPreset');
+const gpuFlopsEl = $('#gpuFlops');
+const gpuBwEl = $('#gpuBw');
+const cpuPresetEl = $('#cpuPreset');
+const cpuFlopsEl = $('#cpuFlops');
+const ramBwEl = $('#ramBw');
+const nglOverrideEl = $('#nglOverride');
+const perfPanel = $('#perfPanel');
 
 const calcBtn = $('#calcBtn');
 const loadingEl = $('#loading');
@@ -747,6 +836,72 @@ function populateQuantSelect(sel, defaultType) {
 
 populateQuantSelect(kvTypeKEl, GGMLQuantizationType.F16);
 populateQuantSelect(kvTypeVEl, GGMLQuantizationType.F16);
+
+function populateGpuSelect() {
+  // Grouped by vendor; newest first within each group (already sorted in JSON).
+  const vendors = {};
+  for (const g of GPU_PRESETS) {
+    (vendors[g.vendor] = vendors[g.vendor] || []).push(g);
+  }
+  for (const vendor of Object.keys(vendors)) {
+    const og = document.createElement('optgroup');
+    og.label = vendor;
+    for (const g of vendors[vendor]) {
+      const opt = document.createElement('option');
+      opt.value = g.id;
+      opt.textContent = `${g.name} — ${g.fp16Tflops} TF, ${g.memBwGBps} GB/s${g.vramGB ? `, ${g.vramGB} GiB` : ''}`;
+      og.appendChild(opt);
+    }
+    gpuPresetEl.appendChild(og);
+  }
+}
+
+function populateCpuSelect() {
+  const vendors = {};
+  for (const c of CPU_PRESETS) {
+    (vendors[c.vendor] = vendors[c.vendor] || []).push(c);
+  }
+  for (const vendor of Object.keys(vendors)) {
+    const og = document.createElement('optgroup');
+    og.label = vendor;
+    for (const c of vendors[vendor]) {
+      const opt = document.createElement('option');
+      opt.value = c.id;
+      opt.textContent = `${c.name} — ${c.fp16Tflops} TF, ${c.defaultRamBwGBps} GB/s RAM`;
+      og.appendChild(opt);
+    }
+    cpuPresetEl.appendChild(og);
+  }
+}
+populateCpuSelect();
+
+gpuPresetEl.addEventListener('change', () => {
+  const g = GPU_PRESETS.find(x => x.id === gpuPresetEl.value);
+  if (g) {
+    gpuFlopsEl.value = g.fp16Tflops;
+    gpuBwEl.value = g.memBwGBps;
+    if (g.vramGB && !vramEl.value) vramEl.value = g.vramGB;
+  }
+  if (currentMetadata) renderResults();
+});
+cpuPresetEl.addEventListener('change', () => {
+  const c = CPU_PRESETS.find(x => x.id === cpuPresetEl.value);
+  if (c) {
+    cpuFlopsEl.value = c.fp16Tflops;
+    ramBwEl.value = c.defaultRamBwGBps;
+  } else {
+    cpuFlopsEl.value = '';
+    ramBwEl.value = '';
+  }
+  if (currentMetadata) renderResults();
+});
+// Manual edits flip the corresponding preset to "Custom" (empty value).
+for (const el of [gpuFlopsEl, gpuBwEl]) {
+  el.addEventListener('input', () => { gpuPresetEl.value = ''; });
+}
+for (const el of [cpuFlopsEl, ramBwEl]) {
+  el.addEventListener('input', () => { cpuPresetEl.value = ''; });
+}
 
 // ── State ──
 let currentGGUFUrl = null;
@@ -1216,6 +1371,55 @@ function renderResults() {
       $('#ramFitSection').style.display = 'none';
     }
   }
+
+  // ── Performance panel ──
+  const gpuFlopsV = parseFloat(gpuFlopsEl.value);
+  const gpuBwV = parseFloat(gpuBwEl.value);
+  const cpuFlopsV = parseFloat(cpuFlopsEl.value);
+  const ramBwV = parseFloat(ramBwEl.value);
+  const hasGpuPerf = Number.isFinite(gpuFlopsV) && Number.isFinite(gpuBwV) && gpuFlopsV > 0 && gpuBwV > 0;
+  const hasCpuPerf = Number.isFinite(cpuFlopsV) && Number.isFinite(ramBwV) && cpuFlopsV > 0 && ramBwV > 0;
+
+  if (!hasGpuPerf) {
+    perfPanel.classList.add('hidden');
+  } else {
+    perfPanel.classList.remove('hidden');
+    const nglRaw = nglOverrideEl.value.trim();
+    const nglOverride = (nglRaw === '' || nglRaw.toLowerCase() === 'auto')
+      ? 'auto'
+      : (Number.isFinite(parseInt(nglRaw, 10)) ? parseInt(nglRaw, 10) : 'auto');
+    const perf = estimatePerformance({
+      metadata: currentMetadata, tensorInfos: currentTensorInfos,
+      ctx: ctxSize, batchSize,
+      kv, moe, activations: acts, mmproj: currentMmProjInfo,
+      device: {
+        gpu: {
+          flopsFp16Tflops: gpuFlopsV,
+          bwGBps: gpuBwV,
+          vramBytes: vramGB > 0 ? vramGB * (1024 ** 3) : 0,
+        },
+        cpu: hasCpuPerf ? { flopsFp16Tflops: cpuFlopsV, bwGBps: ramBwV } : null,
+        nGpuLayers: nglOverride,
+        mmprojOnGpu: mmProjDevice !== 'ram',
+      },
+    });
+    $('#perfDecode').textContent = `${perf.decodeTPS.toFixed(1)} tok/s`;
+    $('#perfPrefill').textContent = `${perf.prefillTPS.toFixed(0)} tok/s`;
+    $('#perfTtft').textContent = perf.ttftSec < 1
+      ? `${(perf.ttftSec * 1000).toFixed(0)} ms`
+      : `${perf.ttftSec.toFixed(2)} s`;
+    $('#perfSplit').textContent = `${perf.nGpuLayers} / ${perf.nCpuLayers}${perf.autoSplit ? ' (auto)' : ''}`;
+    $('#perfGpuLayer').textContent = perf.nGpuLayers > 0
+      ? `${perf.perLayerMs.gpu.toFixed(3)} ms (${perf.bottleneck.gpu || '-'})`
+      : '—';
+    $('#perfCpuLayer').textContent = perf.nCpuLayers > 0 && hasCpuPerf
+      ? `${perf.perLayerMs.cpu.toFixed(2)} ms (${perf.bottleneck.cpu || '-'})`
+      : (perf.nCpuLayers > 0 ? '— (CPU not set — spill unaccounted)' : '— (no spill)');
+    $('#perfBottleneck').textContent = perf.bottleneck.overall;
+    const gpuLabel = gpuPresetEl.options[gpuPresetEl.selectedIndex]?.textContent || 'Custom';
+    const cpuLabel = hasCpuPerf ? (cpuPresetEl.options[cpuPresetEl.selectedIndex]?.textContent || 'Custom') : 'none';
+    $('#perfHardware').textContent = `GPU: ${gpuLabel.replace(/ —.*$/, '')} · CPU: ${cpuLabel.replace(/ —.*$/, '')}`;
+  }
 }
 
 // ── Event listeners ──
@@ -1238,7 +1442,8 @@ calcBtn.addEventListener('click', async () => {
 });
 
 // Auto-calculate on input change
-['contextLen', 'batchSize', 'vram', 'ram', 'kvTypeK', 'kvTypeV'].forEach(id => {
+['contextLen', 'batchSize', 'vram', 'ram', 'kvTypeK', 'kvTypeV',
+ 'gpuFlops', 'gpuBw', 'cpuFlops', 'ramBw', 'nglOverride'].forEach(id => {
   document.getElementById(id).addEventListener('change', () => {
     if (currentMetadata && currentTensorInfos) renderResults();
   });
