@@ -92,9 +92,11 @@ h1 {
 .form-row {
   display: flex;
   gap: 8px;
+  align-items: flex-start;
 }
 
 .form-row .form-group { flex: 1; }
+.form-row .form-group > label { min-height: 3em; }
 
 input[type="text"], input[type="number"], select {
   width: 100%;
