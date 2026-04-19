@@ -475,19 +475,6 @@ button.resolve-btn {
           </div>
         </div>
 
-        <div class="form-row">
-          <div class="form-group">
-            <label for="vram">Available VRAM (GiB, optional)</label>
-            <input type="number" id="vram" placeholder="e.g. 24" min="0" step="1" />
-          </div>
-          <div class="form-group">
-            <label for="ram">Available RAM (GiB, optional)</label>
-            <input type="number" id="ram" placeholder="e.g. 32" min="0" step="1" />
-          </div>
-        </div>
-
-        <hr class="divider">
-
         <div class="panel-title" style="margin-bottom:8px"><span class="icon">&#x1F4CA;</span> KV Cache Quantization</div>
         <div class="select-group">
           <div class="form-group">
@@ -505,7 +492,11 @@ button.resolve-btn {
         <div class="panel-title" style="margin-bottom:8px"><span class="icon">&#x26A1;</span> Hardware (tokens/sec)</div>
         <div class="form-group">
           <label for="gpuPreset">GPU preset</label>
-          <select id="gpuPreset"><option value="">— None (skip perf) —</option></select>
+          <select id="gpuPreset"><option value="">— None (skip perf) —</option><option value="custom">Custom</option></select>
+        </div>
+        <div class="form-group">
+          <label for="vram">Available VRAM (GiB, optional)</label>
+          <input type="number" id="vram" placeholder="e.g. 24" min="0" step="1" />
         </div>
         <div class="form-row">
           <div class="form-group">
@@ -517,9 +508,16 @@ button.resolve-btn {
             <input type="number" id="gpuBw" placeholder="e.g. 1008" min="0" step="1" />
           </div>
         </div>
+
+        <hr class="divider">
+
         <div class="form-group">
           <label for="cpuPreset">CPU preset (optional, for spill)</label>
-          <select id="cpuPreset"><option value="">— None (GPU only) —</option></select>
+          <select id="cpuPreset"><option value="">— None (GPU only) —</option><option value="custom">Custom</option></select>
+        </div>
+        <div class="form-group">
+          <label for="ram">Available RAM (GiB, optional)</label>
+          <input type="number" id="ram" placeholder="e.g. 32" min="0" step="1" />
         </div>
         <div class="form-row">
           <div class="form-group">
@@ -880,7 +878,7 @@ gpuPresetEl.addEventListener('change', () => {
   if (g) {
     gpuFlopsEl.value = g.fp16Tflops;
     gpuBwEl.value = g.memBwGBps;
-    if (g.vramGB && !vramEl.value) vramEl.value = g.vramGB;
+    if (g.vramGB) vramEl.value = g.vramGB;
   }
   if (currentMetadata) renderResults();
 });
@@ -895,12 +893,11 @@ cpuPresetEl.addEventListener('change', () => {
   }
   if (currentMetadata) renderResults();
 });
-// Manual edits flip the corresponding preset to "Custom" (empty value).
-for (const el of [gpuFlopsEl, gpuBwEl]) {
-  el.addEventListener('input', () => { gpuPresetEl.value = ''; });
+for (const el of [gpuFlopsEl, gpuBwEl, vramEl]) {
+  el.addEventListener('input', () => { gpuPresetEl.value = 'custom'; });
 }
-for (const el of [cpuFlopsEl, ramBwEl]) {
-  el.addEventListener('input', () => { cpuPresetEl.value = ''; });
+for (const el of [cpuFlopsEl, ramBwEl, ramEl]) {
+  el.addEventListener('input', () => { cpuPresetEl.value = 'custom'; });
 }
 
 // ── State ──
