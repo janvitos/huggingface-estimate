@@ -860,9 +860,11 @@ function layerIndexFromTensorName(name) {
 }
 
 // Compute per-layer byte/element footprint and global (non-block) output
-// tensors. For MoE layers, expert tensors contribute their active fraction
-// (expertUsedCount / expertCount) to the per-token-streamed totals, since
-// llama.cpp only reads the selected experts each step.
+// tensors. For MoE layers, expert tensors are split into full (all experts,
+// used for storage fit) vs active (expertUsedCount / expertCount, used for
+// per-token streamed totals). Non-expert tensors (attn, router, shared, norms,
+// non-MoE FFN) are tracked separately so callers can model the llama.cpp
+// `--n-cpu-moe` mode where experts live in RAM but non-expert parts run on GPU.
 export function calcPerLayerFootprint(metadata, tensorInfos, kv, moe) {
   const arch = getModelArch(metadata);
   const handler = getArchHandler(arch);
@@ -874,9 +876,13 @@ export function calcPerLayerFootprint(metadata, tensorInfos, kv, moe) {
   const isExpertTensor = (name) => expertPatterns.some(p => globMatch(p, name));
 
   const layerBytes = new Array(nLayers).fill(0);
-  const layerActiveBytes = new Array(nLayers).fill(0);
   const layerElems = new Array(nLayers).fill(0);
-  const layerActiveElems = new Array(nLayers).fill(0);
+  const layerNonExpertBytes = new Array(nLayers).fill(0);
+  const layerNonExpertElems = new Array(nLayers).fill(0);
+  const layerExpertBytesFull = new Array(nLayers).fill(0);
+  const layerExpertElemsFull = new Array(nLayers).fill(0);
+  const layerExpertBytesActive = new Array(nLayers).fill(0);
+  const layerExpertElemsActive = new Array(nLayers).fill(0);
   let outputBytes = 0, outputElems = 0;
 
   for (const t of tensorInfos) {
@@ -891,12 +897,23 @@ export function calcPerLayerFootprint(metadata, tensorInfos, kv, moe) {
     layerBytes[idx] += bytes;
     layerElems[idx] += elems;
     if (expertCount > 0 && isExpertTensor(t.name)) {
-      layerActiveBytes[idx] += bytes * expertFrac;
-      layerActiveElems[idx] += elems * expertFrac;
+      layerExpertBytesFull[idx] += bytes;
+      layerExpertElemsFull[idx] += elems;
+      layerExpertBytesActive[idx] += bytes * expertFrac;
+      layerExpertElemsActive[idx] += elems * expertFrac;
     } else {
-      layerActiveBytes[idx] += bytes;
-      layerActiveElems[idx] += elems;
+      layerNonExpertBytes[idx] += bytes;
+      layerNonExpertElems[idx] += elems;
     }
+  }
+
+  // Derived convenience arrays: per-token streamed bytes/elems (non-expert +
+  // active experts). Kept for callers and bottleneck-diagnostic aggregates.
+  const layerActiveBytes = new Array(nLayers);
+  const layerActiveElems = new Array(nLayers);
+  for (let i = 0; i < nLayers; i++) {
+    layerActiveBytes[i] = layerNonExpertBytes[i] + layerExpertBytesActive[i];
+    layerActiveElems[i] = layerNonExpertElems[i] + layerExpertElemsActive[i];
   }
 
   const kvBytesPerLayer = nLayers > 0 && kv ? kv.totalBytes / nLayers : 0;
@@ -905,31 +922,86 @@ export function calcPerLayerFootprint(metadata, tensorInfos, kv, moe) {
     nLayers,
     layerBytes, layerActiveBytes,
     layerElems, layerActiveElems,
+    layerNonExpertBytes, layerNonExpertElems,
+    layerExpertBytesFull, layerExpertElemsFull,
+    layerExpertBytesActive, layerExpertElemsActive,
     kvBytesPerLayer,
     outputBytes, outputElems,
+    hasExperts: expertCount > 0,
   };
 }
 
-// Greedy VRAM fill: fit contiguous layers 0..n-1 onto GPU, the rest fall
-// to CPU. Output weights + activations reserved up front (mirrors llama.cpp's
-// `-ngl` heuristic, which always keeps the output layer on the offload
-// target when possible).
-export function computeOffloadSplit({ vramBytes, footprint, activationBytes = 0, nLayerOverride }) {
-  const { nLayers, layerActiveBytes, kvBytesPerLayer, outputBytes } = footprint;
+// Greedy VRAM fill with three tiers per MoE layer:
+//   'gpu'    — full layer (including all experts) resident in VRAM
+//   'hybrid' — non-expert + active experts in VRAM, inactive experts in RAM;
+//              expert matmul runs on CPU (llama.cpp `--n-cpu-moe` / -ot exps=CPU)
+//   'cpu'    — whole layer spills to CPU
+//
+// Fit order: layers 0..N first try 'gpu', then 'hybrid' (only for MoE layers
+// and only when mode permits), then 'cpu'. Output weights + activations
+// reserved up front, matching llama.cpp's `-ngl` heuristic.
+//
+// moeOffloadMode:
+//   'auto'      — try gpu → hybrid → cpu (default)
+//   'force-on'  — MoE layers: skip 'gpu', always try 'hybrid' first. Dense
+//                 layers still fit as 'gpu' (no expert to spill).
+//   'force-off' — never hybrid; 'gpu' or 'cpu' only (legacy behaviour).
+export function computeOffloadSplit({
+  vramBytes, footprint, activationBytes = 0, nLayerOverride,
+  moeOffloadMode = 'auto',
+}) {
+  const {
+    nLayers, kvBytesPerLayer, outputBytes,
+    layerNonExpertBytes, layerExpertBytesFull, layerExpertBytesActive,
+  } = footprint;
+
+  const modes = new Array(nLayers).fill('cpu');
+  const hasExpert = (i) => (layerExpertBytesFull[i] || 0) > 0;
+
   if (nLayerOverride != null && nLayerOverride !== 'auto') {
     const n = Math.max(0, Math.min(nLayers, Number(nLayerOverride)));
-    return { nGpuLayers: n, nCpuLayers: nLayers - n, auto: false };
+    for (let i = 0; i < n; i++) modes[i] = 'gpu';
+    return {
+      nGpuLayers: n, nHybridLayers: 0, nCpuLayers: nLayers - n,
+      auto: false, modes, moeOffloadMode,
+    };
   }
   if (!vramBytes || vramBytes <= 0) {
-    return { nGpuLayers: 0, nCpuLayers: nLayers, auto: true };
+    return {
+      nGpuLayers: 0, nHybridLayers: 0, nCpuLayers: nLayers,
+      auto: true, modes, moeOffloadMode,
+    };
   }
+
   let remaining = vramBytes - outputBytes - activationBytes;
-  let n = 0;
+  let nGpu = 0, nHybrid = 0;
+  const allowGpuFirst = (moeOffloadMode !== 'force-on');
+  const allowHybrid = (moeOffloadMode !== 'force-off');
+
   for (let i = 0; i < nLayers; i++) {
-    const need = layerActiveBytes[i] + kvBytesPerLayer;
-    if (remaining >= need) { remaining -= need; n++; } else break;
+    const gpuNeed = layerNonExpertBytes[i] + layerExpertBytesFull[i] + kvBytesPerLayer;
+    const hybridNeed = layerNonExpertBytes[i] + layerExpertBytesActive[i] + kvBytesPerLayer;
+    const canGpu = allowGpuFirst && remaining >= gpuNeed;
+    const canHybrid = allowHybrid && hasExpert(i) && remaining >= hybridNeed;
+    // force-on: prefer hybrid over gpu for MoE layers; dense still uses gpu
+    if (moeOffloadMode === 'force-on' && hasExpert(i) && canHybrid) {
+      modes[i] = 'hybrid'; remaining -= hybridNeed; nHybrid++;
+    } else if (canGpu) {
+      modes[i] = 'gpu'; remaining -= gpuNeed; nGpu++;
+    } else if (canHybrid) {
+      modes[i] = 'hybrid'; remaining -= hybridNeed; nHybrid++;
+    } else {
+      // No more GPU room — remaining layers all go to CPU. Stop probing to
+      // preserve contiguous ordering (matches llama.cpp's layer-ordered offload).
+      break;
+    }
   }
-  return { nGpuLayers: n, nCpuLayers: nLayers - n, auto: true };
+
+  const nCpu = nLayers - nGpu - nHybrid;
+  return {
+    nGpuLayers: nGpu, nHybridLayers: nHybrid, nCpuLayers: nCpu,
+    auto: true, modes, moeOffloadMode,
+  };
 }
 
 // Estimate decode / prefill / TTFT for a given hardware topology.
@@ -937,7 +1009,8 @@ export function computeOffloadSplit({ vramBytes, footprint, activationBytes = 0,
 // device = {
 //   gpu: { flopsFp16Tflops, bwGBps, vramBytes },
 //   cpu: { flopsFp16Tflops, bwGBps } | null,
-//   nGpuLayers: number | 'auto'
+//   nGpuLayers: number | 'auto',
+//   moeOffloadMode: 'auto' | 'force-on' | 'force-off'  (MoE expert placement)
 // }
 //
 // Returns SI units internally (seconds, bytes, FLOPS). Formatting is done by
@@ -962,42 +1035,79 @@ export function estimatePerformance({
     vramBytes, footprint,
     activationBytes: reservedGpuBytes,
     nLayerOverride: device.nGpuLayers,
+    moeOffloadMode: device.moeOffloadMode || 'auto',
   });
-  const { nGpuLayers, nCpuLayers, auto } = split;
+  const { nGpuLayers, nHybridLayers, nCpuLayers, auto, modes, moeOffloadMode } = split;
 
-  const { nLayers, layerActiveBytes, layerActiveElems, kvBytesPerLayer, outputBytes, outputElems } = footprint;
+  const {
+    nLayers, layerActiveBytes, layerActiveElems,
+    layerNonExpertBytes, layerNonExpertElems,
+    layerExpertBytesActive, layerExpertElemsActive,
+    layerExpertBytesFull,
+    kvBytesPerLayer, outputBytes, outputElems,
+  } = footprint;
 
   // Per-token latency — sum of per-layer max(compute, bandwidth)
-  let tDecodeGpu = 0, tDecodeCpu = 0;
-  let tPrefillGpu = 0, tPrefillCpu = 0;
+  let tDecodeGpu = 0, tDecodeCpu = 0, tDecodeHybridGpu = 0, tDecodeHybridCpu = 0;
+  let tPrefillGpu = 0, tPrefillCpu = 0, tPrefillHybridGpu = 0, tPrefillHybridCpu = 0;
   let gpuFlopsTime = 0, gpuBwTime = 0, cpuFlopsTime = 0, cpuBwTime = 0;
 
   const cpuAvailable = cpu && cpuFlops > 0 && cpuBw > 0;
+  const kvB = kvBytesPerLayer;
 
   for (let i = 0; i < nLayers; i++) {
-    const onGpu = i < nGpuLayers;
-    const wBytes = layerActiveBytes[i];
-    const params = layerActiveElems[i];
-    const kvB = kvBytesPerLayer;
-
-    // Decode (batch = 1)
-    const flopsDec = 2 * params;
-    const bytesDec = wBytes + kvB;
-    // Prefill (batch = ctx)
-    const flopsPre = 2 * params * ctx;
-    const bytesPre = wBytes + kvB; // KV already sized for full ctx; weights stream once per chunk
-
-    if (onGpu) {
+    const mode = modes[i];
+    if (mode === 'gpu') {
+      // Full layer on GPU: all experts resident in VRAM, only active experts
+      // are actually read per token (sparse MoE routing) — matches llama.cpp.
+      const params = layerActiveElems[i];
+      const wBytes = layerActiveBytes[i];
+      const flopsDec = 2 * params;
+      const bytesDec = wBytes + kvB;
+      const flopsPre = 2 * params * ctx;
+      const bytesPre = wBytes + kvB;
       tDecodeGpu += Math.max(flopsDec / gpuFlops, bytesDec / gpuBw);
       tPrefillGpu += Math.max(flopsPre / gpuFlops, bytesPre / gpuBw);
       gpuFlopsTime += flopsDec / gpuFlops;
       gpuBwTime += bytesDec / gpuBw;
-    } else if (cpuAvailable) {
+    } else if (mode === 'hybrid' && cpuAvailable) {
+      // Non-expert part (attn, router, shared, norms) runs on GPU
+      const neParams = layerNonExpertElems[i];
+      const neBytes = layerNonExpertBytes[i];
+      const gFlopsDec = 2 * neParams;
+      const gBytesDec = neBytes + kvB;
+      const gFlopsPre = 2 * neParams * ctx;
+      const gBytesPre = neBytes + kvB;
+      tDecodeHybridGpu += Math.max(gFlopsDec / gpuFlops, gBytesDec / gpuBw);
+      tPrefillHybridGpu += Math.max(gFlopsPre / gpuFlops, gBytesPre / gpuBw);
+      gpuFlopsTime += gFlopsDec / gpuFlops;
+      gpuBwTime += gBytesDec / gpuBw;
+      // Active experts run on CPU — read from RAM, computed on CPU cores
+      const xParams = layerExpertElemsActive[i];
+      const xBytes = layerExpertBytesActive[i];
+      const cFlopsDec = 2 * xParams;
+      const cBytesDec = xBytes;
+      const cFlopsPre = 2 * xParams * ctx;
+      const cBytesPre = xBytes;
+      tDecodeHybridCpu += Math.max(cFlopsDec / cpuFlops, cBytesDec / cpuBw);
+      tPrefillHybridCpu += Math.max(cFlopsPre / cpuFlops, cBytesPre / cpuBw);
+      cpuFlopsTime += cFlopsDec / cpuFlops;
+      cpuBwTime += cBytesDec / cpuBw;
+    } else if (mode === 'cpu' && cpuAvailable) {
+      // Full layer on CPU: whole active weight set streams from RAM
+      const params = layerActiveElems[i];
+      const wBytes = layerActiveBytes[i];
+      const flopsDec = 2 * params;
+      const bytesDec = wBytes + kvB;
+      const flopsPre = 2 * params * ctx;
+      const bytesPre = wBytes + kvB;
       tDecodeCpu += Math.max(flopsDec / cpuFlops, bytesDec / cpuBw);
       tPrefillCpu += Math.max(flopsPre / cpuFlops, bytesPre / cpuBw);
       cpuFlopsTime += flopsDec / cpuFlops;
       cpuBwTime += bytesDec / cpuBw;
     }
+    // If mode === 'hybrid' or 'cpu' but no CPU preset provided, layer is
+    // unmodeled — caller surfaces this via the bottleneck label below.
   }
 
   // Output layer (lm_head + embeddings): assume GPU residence — llama.cpp
@@ -1005,50 +1115,61 @@ export function estimatePerformance({
   const tOutDec = Math.max((2 * outputElems) / gpuFlops, outputBytes / gpuBw);
   const tOutPre = Math.max((2 * outputElems * ctx) / gpuFlops, outputBytes / gpuBw);
 
-  // Boundary transfer: when layers straddle GPU↔CPU, the activation vector
-  // crosses the PCIe bus once per token. Assume PCIe 4.0 x16 ≈ 32 GB/s if
-  // no CPU bandwidth is lower. For decode this is one n_embd-sized vector;
-  // for prefill it scales with ctx.
+  // Boundary transfer: whenever the activation vector crosses the GPU↔CPU bus
+  // it pays a PCIe-limited hop. Full CPU spill: 1 hop at the boundary. Hybrid
+  // layer: 2 hops per layer (send activation for expert compute, receive
+  // result). Assume PCIe 4.0 x16 ≈ 32 GB/s unless the CPU's advertised BW is
+  // lower (which becomes the limiting factor).
   const n_embd = getMeta(metadata, `${getModelArch(metadata)}.embedding_length`) || 0;
   const boundaryBytes = n_embd * 2; // bf16/fp16 activation
   const boundaryBw = Math.min(32e9, cpuBw || 32e9);
-  const tBoundaryDec = (nGpuLayers > 0 && nCpuLayers > 0) ? boundaryBytes / boundaryBw : 0;
+  const spillBoundaryHops = (nGpuLayers + nHybridLayers > 0 && nCpuLayers > 0) ? 1 : 0;
+  const hybridHops = 2 * nHybridLayers;
+  const totalHops = spillBoundaryHops + hybridHops;
+  const tBoundaryDec = totalHops > 0 ? (totalHops * boundaryBytes) / boundaryBw : 0;
   const tBoundaryPre = tBoundaryDec * ctx;
 
-  const tDecode = tDecodeGpu + tDecodeCpu + tOutDec + tBoundaryDec;
-  const tPrefill = tPrefillGpu + tPrefillCpu + tOutPre + tBoundaryPre;
+  const tDecode = tDecodeGpu + tDecodeCpu + tDecodeHybridGpu + tDecodeHybridCpu + tOutDec + tBoundaryDec;
+  const tPrefill = tPrefillGpu + tPrefillCpu + tPrefillHybridGpu + tPrefillHybridCpu + tOutPre + tBoundaryPre;
 
   // Bottleneck classification
-  const gpuBottleneck = nGpuLayers > 0
+  const gpuBottleneck = (nGpuLayers + nHybridLayers) > 0
     ? (gpuFlopsTime > gpuBwTime ? 'compute' : 'bandwidth')
     : null;
-  const cpuBottleneck = nCpuLayers > 0 && cpuAvailable
+  const cpuBottleneck = (nCpuLayers > 0 || nHybridLayers > 0) && cpuAvailable
     ? (cpuFlopsTime > cpuBwTime ? 'compute' : 'bandwidth')
     : null;
+  const tHybridCpu = tDecodeHybridCpu;
   let overall;
-  if (nCpuLayers > 0 && cpuAvailable && tDecodeCpu > 0.5 * tDecode) overall = 'cpu-dram-spill';
-  else if (nCpuLayers > 0 && !cpuAvailable) overall = 'cpu-layers-unrun';
+  if ((nCpuLayers > 0 || nHybridLayers > 0) && !cpuAvailable) overall = 'cpu-layers-unrun';
+  else if (nCpuLayers > 0 && cpuAvailable && tDecodeCpu > 0.5 * tDecode) overall = 'cpu-dram-spill';
+  else if (nHybridLayers > 0 && cpuAvailable && tHybridCpu > 0.5 * tDecode) overall = 'cpu-experts';
   else overall = gpuBottleneck || 'n/a';
+
+  const tHybridTotal = tDecodeHybridGpu + tDecodeHybridCpu;
 
   return {
     decodeTPS: tDecode > 0 ? 1 / tDecode : 0,
     prefillTPS: tPrefill > 0 ? ctx / tPrefill : 0,
     ttftSec: tPrefill,
-    nGpuLayers, nCpuLayers, autoSplit: auto,
+    nGpuLayers, nHybridLayers, nCpuLayers, autoSplit: auto, moeOffloadMode,
     perLayerMs: {
       gpu: nGpuLayers > 0 ? (tDecodeGpu / nGpuLayers) * 1000 : 0,
+      hybrid: nHybridLayers > 0 ? (tHybridTotal / nHybridLayers) * 1000 : 0,
       cpu: nCpuLayers > 0 ? (tDecodeCpu / nCpuLayers) * 1000 : 0,
     },
     bottleneck: { gpu: gpuBottleneck, cpu: cpuBottleneck, overall },
     // Raw timing breakdown (seconds)
     timing: {
       decodeGpu: tDecodeGpu, decodeCpu: tDecodeCpu,
+      decodeHybridGpu: tDecodeHybridGpu, decodeHybridCpu: tDecodeHybridCpu,
       output: tOutDec, boundary: tBoundaryDec,
       decodeTotal: tDecode, prefillTotal: tPrefill,
     },
     footprint: {
       nLayers, outputBytes,
       avgLayerActiveBytes: nLayers > 0 ? layerActiveBytes.reduce((a, b) => a + b, 0) / nLayers : 0,
+      avgLayerFullBytes: nLayers > 0 ? (layerNonExpertBytes.reduce((a, b) => a + b, 0) + layerExpertBytesFull.reduce((a, b) => a + b, 0)) / nLayers : 0,
       kvBytesPerLayer,
     },
   };

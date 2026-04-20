@@ -73,6 +73,7 @@ function parseArgs(argv) {
     cpuFlops: null,
     ramBw: null,
     ngl: 'auto',
+    moeOffload: 'auto',
   };
 
   let i = 2;
@@ -116,6 +117,13 @@ function parseArgs(argv) {
     } else if (arg === '--ngl') {
       const v = argv[++i];
       args.ngl = v === 'auto' ? 'auto' : parseInt(v, 10);
+    } else if (arg === '--moe-offload') {
+      const v = argv[++i];
+      if (!['auto', 'force-on', 'force-off'].includes(v)) {
+        console.error(`Error: --moe-offload must be "auto", "force-on", or "force-off" (got "${v}")`);
+        process.exit(1);
+      }
+      args.moeOffload = v;
     } else if (!arg.startsWith('-')) {
       args.repo = arg;
     }
@@ -153,6 +161,7 @@ function resolveDevice(args) {
     },
     cpu: cpu ? { ...cpu, preset: cpuPreset } : null,
     nGpuLayers: args.ngl === 'auto' ? 'auto' : args.ngl,
+    moeOffloadMode: args.moeOffload,
   };
 }
 
@@ -241,10 +250,13 @@ async function calcModel(repo) {
       prefillTPS: +perf.prefillTPS.toFixed(2),
       ttftSec: +perf.ttftSec.toFixed(4),
       nGpuLayers: perf.nGpuLayers,
+      nHybridLayers: perf.nHybridLayers || 0,
       nCpuLayers: perf.nCpuLayers,
       autoSplit: perf.autoSplit,
+      moeOffloadMode: perf.moeOffloadMode,
       perLayerMs: {
         gpu: +perf.perLayerMs.gpu.toFixed(3),
+        hybrid: +(perf.perLayerMs.hybrid || 0).toFixed(3),
         cpu: +perf.perLayerMs.cpu.toFixed(3),
       },
       bottleneck: perf.bottleneck,
