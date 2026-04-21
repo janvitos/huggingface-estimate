@@ -90,7 +90,10 @@ export async function resolveHFModel(path) {
     .filter((f) => f && f.toLowerCase().endsWith('.gguf'))
     .sort(sortByShardsThenAlpha);
 
-  const ggufFiles = allGguf.filter((f) => !isMmProjName(f));
+  const shardRe = /-\d+-of-\d+\.gguf$/i;
+  const shardFirstRe = /-0*1-of-\d+\.gguf$/i;
+  const ggufFiles = allGguf.filter((f) => !isMmProjName(f))
+    .filter((f) => !shardRe.test(f) || shardFirstRe.test(f));
   const mmProjFiles = allGguf.filter(isMmProjName);
 
   if (ggufFiles.length === 0) {
