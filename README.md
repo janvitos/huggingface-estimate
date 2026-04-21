@@ -37,6 +37,10 @@ Performance flags: `--gpu <name>` (e.g. `"RTX 4090"`, matches `gpu-data.json`), 
 | **Multimodal projector (mmproj)** | VRAM default, RAM with `--no-mmproj-offload` | Weights + per-image output activation (`n_output_tokens × projection_dim × 4` bytes). `n_output_tokens` is arch-specific, mirroring `clip_n_output_tokens()` from llama.cpp |
 | **Tokens/sec throughput** | Supply a GPU preset (+ optional CPU for spill) | Per-layer speed-of-light: `t_layer = max(FLOPs/FLOPS, bytes/BW)` on whichever device hosts the layer. Decode TPS = `1 / Σ t_layer`. Prefill scales FLOPs by `ctx`; TTFT is its wall time. Dense VRAM spill becomes `n_gpu` / `n_cpu` layer partitioning, MoE uses active-expert streaming. **This is a theoretical upper bound** — real llama.cpp runs typically hit 40–70% of SOL. Upgrade lever is named via `bottleneck`: `compute` / `bandwidth` / `cpu-dram-spill` |
 
+## Hardware presets
+
+GPU and CPU presets are split into desktop, mobile, and server groups per vendor in the dropdown. Data center GPUs (A100, H100, B200, Instinct MI, etc.) appear under `"<Vendor> (server)"`. Laptop/mobile GPUs and CPUs (Arc M-suffix, Radeon RX M/S-suffix, Ryzen U/H/HS/HX) appear under `"<Vendor> (mobile)"`. Apple Silicon is shown under `"Apple (mobile)"`. Dual-form-factor CPUs (e.g. Ryzen AI 9 HX 475, used in both laptops and small desktops) appear in both desktop and mobile groups.
+
 ## Multimodal projector (mmproj) support
 
 When a HuggingFace repo contains both a language-model GGUF and an `mmproj-*.gguf` companion (vision/audio encoder), the tool detects and lists mmproj files separately from the main-model dropdown. Pick "None" to ignore, or select one to fold its memory contribution into the VRAM or RAM total (toggle via the placement select). The CLI exposes the same via `--mmproj <filename>` and `--mmprojDevice vram|ram`. Detection is filename-based (`/mmproj/i` on basename). Activation output tokens are estimated per projector type (gemma3, qwen2vl_merger, resampler, etc.); audio projectors report weights only because their patch count depends on runtime audio length.

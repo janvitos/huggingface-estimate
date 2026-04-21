@@ -49,7 +49,8 @@
     "fp32Tflops": 16.79,
     "memType": "GDDR6",
     "tdpW": 120,
-    "tensorCore": false
+    "tensorCore": false,
+    "mobile": true
   },
   {
     "id": "intel-arc-a750",
@@ -75,7 +76,8 @@
     "fp32Tflops": 12.6,
     "memType": "GDDR6",
     "tdpW": 80,
-    "tensorCore": false
+    "tensorCore": false,
+    "mobile": true
   },
   {
     "id": "intel-arc-a580",
@@ -101,7 +103,8 @@
     "fp32Tflops": 5.33,
     "memType": "GDDR6",
     "tdpW": 75,
-    "tensorCore": false
+    "tensorCore": false,
+    "mobile": true
   },
   {
     "id": "intel-arc-a550m",
@@ -114,7 +117,8 @@
     "fp32Tflops": 8.4,
     "memType": "GDDR6",
     "tdpW": 60,
-    "tensorCore": false
+    "tensorCore": false,
+    "mobile": true
   },
   {
     "id": "intel-arc-a530m",
@@ -127,7 +131,8 @@
     "fp32Tflops": 3.99,
     "memType": "GDDR6",
     "tdpW": 65,
-    "tensorCore": false
+    "tensorCore": false,
+    "mobile": true
   },
   {
     "id": "intel-arc-a380",
@@ -153,7 +158,8 @@
     "fp32Tflops": 4.1,
     "memType": "GDDR6",
     "tdpW": 35,
-    "tensorCore": false
+    "tensorCore": false,
+    "mobile": true
   },
   {
     "id": "intel-arc-a370m",
@@ -166,7 +172,8 @@
     "fp32Tflops": 4.2,
     "memType": "GDDR6",
     "tdpW": 35,
-    "tensorCore": false
+    "tensorCore": false,
+    "mobile": true
   },
   {
     "id": "intel-arc-a350",
@@ -192,7 +199,8 @@
     "fp32Tflops": 3.38,
     "memType": "GDDR6",
     "tdpW": 25,
-    "tensorCore": false
+    "tensorCore": false,
+    "mobile": true
   },
   {
     "id": "intel-arc-a310",

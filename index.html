@@ -867,41 +867,55 @@ function populateQuantSelect(sel, defaultType) {
 populateQuantSelect(kvTypeKEl, GGMLQuantizationType.F16);
 populateQuantSelect(kvTypeVEl, GGMLQuantizationType.F16);
 
+function addOptgroup(selectEl, label, entries, fmt) {
+  if (!entries.length) return;
+  const og = document.createElement('optgroup');
+  og.label = label;
+  for (const e of entries) {
+    const opt = document.createElement('option');
+    opt.value = e.id;
+    opt.textContent = fmt(e);
+    og.appendChild(opt);
+  }
+  selectEl.appendChild(og);
+}
+
+function partitionByGroup(entries) {
+  const byVendor = {};
+  for (const e of entries) {
+    (byVendor[e.vendor] = byVendor[e.vendor] || []).push(e);
+  }
+  return byVendor;
+}
+
 function populateGpuSelect() {
   gpuPresetEl.innerHTML = '';
-  const vendors = {};
-  for (const g of getGpuPresets()) {
-    (vendors[g.vendor] = vendors[g.vendor] || []).push(g);
-  }
-  for (const vendor of Object.keys(vendors)) {
-    const og = document.createElement('optgroup');
-    og.label = vendor;
-    for (const g of vendors[vendor]) {
-      const opt = document.createElement('option');
-      opt.value = g.id;
-      opt.textContent = `${g.name} — ${g.fp16Tflops} TF, ${g.memBwGBps} GB/s${g.vramGB ? `, ${g.vramGB} GiB` : ''}`;
-      og.appendChild(opt);
-    }
-    gpuPresetEl.appendChild(og);
+  const byVendor = partitionByGroup(getGpuPresets());
+  const fmt = g => `${g.name} — ${g.fp16Tflops} TF, ${g.memBwGBps} GB/s${g.vramGB ? `, ${g.vramGB} GiB` : ''}`;
+  for (const [vendor, all] of Object.entries(byVendor)) {
+    const desktop = all.filter(g => (!g.mobile && !g.server) || g.desktop);
+    const mobile = all.filter(g => g.mobile);
+    const server = all.filter(g => g.server);
+    addOptgroup(gpuPresetEl, vendor, desktop, fmt);
+    addOptgroup(gpuPresetEl, `${vendor} (mobile)`, mobile, fmt);
+    addOptgroup(gpuPresetEl, `${vendor} (server)`, server, fmt);
   }
 }
 
 function populateCpuSelect() {
   cpuPresetEl.innerHTML = '';
-  const vendors = {};
-  for (const c of getCpuPresets()) {
-    (vendors[c.vendor] = vendors[c.vendor] || []).push(c);
-  }
-  for (const vendor of Object.keys(vendors)) {
-    const og = document.createElement('optgroup');
-    og.label = vendor;
-    for (const c of vendors[vendor]) {
-      const opt = document.createElement('option');
-      opt.value = c.id;
-      opt.textContent = `${c.name} — ${c.fp16Tflops} TF, ${c.defaultRamBwGBps} GB/s RAM`;
-      og.appendChild(opt);
+  const byVendor = partitionByGroup(getCpuPresets());
+  const fmt = c => `${c.name} — ${c.fp16Tflops} TF, ${c.defaultRamBwGBps} GB/s RAM`;
+  for (const [vendor, all] of Object.entries(byVendor)) {
+    const desktop = all.filter(c => (!c.mobile && !c.server) || c.desktop);
+    const mobile = all.filter(c => c.mobile);
+    const server = all.filter(c => c.server);
+    const mainLabel = vendor === 'Apple' ? `${vendor} (mobile)` : vendor;
+    addOptgroup(cpuPresetEl, mainLabel, vendor === 'Apple' ? all : desktop, fmt);
+    if (vendor !== 'Apple') {
+      addOptgroup(cpuPresetEl, `${vendor} (mobile)`, mobile, fmt);
+      addOptgroup(cpuPresetEl, `${vendor} (server)`, server, fmt);
     }
-    cpuPresetEl.appendChild(og);
   }
 }
 

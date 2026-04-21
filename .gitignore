@@ -5,3 +5,4 @@ gguf-parser-go/
 llama-cpp-rotorquant/
 llama-cpp-turboquant/
 amd/
+resources/

@@ -1206,7 +1206,8 @@
     "fp32Tflops": 62.08,
     "memType": "HBM3e",
     "tdpW": 1000,
-    "tensorCore": true
+    "tensorCore": true,
+    "server": true
   },
   {
     "id": "nvidia-b100",
@@ -1219,7 +1220,8 @@
     "fp32Tflops": 62.08,
     "memType": "HBM3e",
     "tdpW": 1000,
-    "tensorCore": true
+    "tensorCore": true,
+    "server": true
   },
   {
     "id": "nvidia-h800-pcie-80-gb",
@@ -1232,7 +1234,8 @@
     "fp32Tflops": 51.22,
     "memType": "HBM2e",
     "tdpW": 350,
-    "tensorCore": true
+    "tensorCore": true,
+    "server": true
   },
   {
     "id": "nvidia-h800-sxm5",
@@ -1245,7 +1248,8 @@
     "fp32Tflops": 59.3,
     "memType": "HBM3",
     "tdpW": 700,
-    "tensorCore": true
+    "tensorCore": true,
+    "server": true
   },
   {
     "id": "nvidia-h200-nvl",
@@ -1258,7 +1262,8 @@
     "fp32Tflops": 60.32,
     "memType": "HBM3e",
     "tdpW": 600,
-    "tensorCore": true
+    "tensorCore": true,
+    "server": true
   },
   {
     "id": "nvidia-h200-sxm-141-gb",
@@ -1271,7 +1276,8 @@
     "fp32Tflops": 66.91,
     "memType": "HBM3e",
     "tdpW": 700,
-    "tensorCore": true
+    "tensorCore": true,
+    "server": true
   },
   {
     "id": "nvidia-h100-cnx",
@@ -1284,7 +1290,8 @@
     "fp32Tflops": 53.84,
     "memType": "HBM2e",
     "tdpW": 350,
-    "tensorCore": true
+    "tensorCore": true,
+    "server": true
   },
   {
     "id": "nvidia-h100-nvl-94-gb",
@@ -1297,7 +1304,8 @@
     "fp32Tflops": 60.32,
     "memType": "HBM3",
     "tdpW": 400,
-    "tensorCore": true
+    "tensorCore": true,
+    "server": true
   },
   {
     "id": "nvidia-h100-pcie-80-gb",
@@ -1310,7 +1318,8 @@
     "fp32Tflops": 51.22,
     "memType": "HBM2e",
     "tdpW": 350,
-    "tensorCore": true
+    "tensorCore": true,
+    "server": true
   },
   {
     "id": "nvidia-h100-pcie-96-gb",
@@ -1323,7 +1332,8 @@
     "fp32Tflops": 62.08,
     "memType": "HBM3",
     "tdpW": 700,
-    "tensorCore": true
+    "tensorCore": true,
+    "server": true
   },
   {
     "id": "nvidia-h100-sxm5-64-gb",
@@ -1336,7 +1346,8 @@
     "fp32Tflops": 66.91,
     "memType": "HBM3",
     "tdpW": 700,
-    "tensorCore": true
+    "tensorCore": true,
+    "server": true
   },
   {
     "id": "nvidia-h100-sxm5-80-gb",
@@ -1349,7 +1360,8 @@
     "fp32Tflops": 66.91,
     "memType": "HBM3",
     "tdpW": 700,
-    "tensorCore": true
+    "tensorCore": true,
+    "server": true
   },
   {
     "id": "nvidia-h100-sxm5-94-gb",
@@ -1362,7 +1374,8 @@
     "fp32Tflops": 66.91,
     "memType": "HBM3",
     "tdpW": 700,
-    "tensorCore": true
+    "tensorCore": true,
+    "server": true
   },
   {
     "id": "nvidia-h100-sxm5-96-gb",
@@ -1375,7 +1388,8 @@
     "fp32Tflops": 66.91,
     "memType": "HBM3",
     "tdpW": 700,
-    "tensorCore": true
+    "tensorCore": true,
+    "server": true
   },
   {
     "id": "nvidia-l40",
@@ -1388,7 +1402,8 @@
     "fp32Tflops": 90.52,
     "memType": "GDDR6",
     "tdpW": 300,
-    "tensorCore": true
+    "tensorCore": true,
+    "server": true
   },
   {
     "id": "nvidia-l40-cnx",
@@ -1401,7 +1416,8 @@
     "fp32Tflops": 89.97,
     "memType": "GDDR6",
     "tdpW": 300,
-    "tensorCore": true
+    "tensorCore": true,
+    "server": true
   },
   {
     "id": "nvidia-l40g",
@@ -1414,7 +1430,8 @@
     "fp32Tflops": 89.97,
     "memType": "GDDR6",
     "tdpW": 300,
-    "tensorCore": true
+    "tensorCore": true,
+    "server": true
   },
   {
     "id": "nvidia-l40s",
@@ -1427,7 +1444,8 @@
     "fp32Tflops": 91.61,
     "memType": "GDDR6",
     "tdpW": 300,
-    "tensorCore": true
+    "tensorCore": true,
+    "server": true
   },
   {
     "id": "nvidia-l20",
@@ -1440,7 +1458,8 @@
     "fp32Tflops": 59.35,
     "memType": "GDDR6",
     "tdpW": 275,
-    "tensorCore": true
+    "tensorCore": true,
+    "server": true
   },
   {
     "id": "nvidia-a800-pcie-40-gb",
@@ -1453,7 +1472,8 @@
     "fp32Tflops": 19.49,
     "memType": "HBM2e",
     "tdpW": 250,
-    "tensorCore": true
+    "tensorCore": true,
+    "server": true
   },
   {
     "id": "nvidia-a800-pcie-80-gb",
@@ -1466,7 +1486,8 @@
     "fp32Tflops": 19.49,
     "memType": "HBM2e",
     "tdpW": 250,
-    "tensorCore": true
+    "tensorCore": true,
+    "server": true
   },
   {
     "id": "nvidia-a800-sxm4-80-gb",
@@ -1479,7 +1500,8 @@
     "fp32Tflops": 19.49,
     "memType": "HBM2e",
     "tdpW": 400,
-    "tensorCore": true
+    "tensorCore": true,
+    "server": true
   },
   {
     "id": "nvidia-a100-pcie-40-gb",
@@ -1492,7 +1514,8 @@
     "fp32Tflops": 19.49,
     "memType": "HBM2e",
     "tdpW": 250,
-    "tensorCore": true
+    "tensorCore": true,
+    "server": true
   },
   {
     "id": "nvidia-a100-pcie-80-gb",
@@ -1505,7 +1528,8 @@
     "fp32Tflops": 19.49,
     "memType": "HBM2e",
     "tdpW": 300,
-    "tensorCore": true
+    "tensorCore": true,
+    "server": true
   },
   {
     "id": "nvidia-a100-sxm4-40-gb",
@@ -1518,7 +1542,8 @@
     "fp32Tflops": 19.49,
     "memType": "HBM2e",
     "tdpW": 400,
-    "tensorCore": true
+    "tensorCore": true,
+    "server": true
   },
   {
     "id": "nvidia-a100-sxm4-80-gb",
@@ -1531,7 +1556,8 @@
     "fp32Tflops": 19.49,
     "memType": "HBM2e",
     "tdpW": 400,
-    "tensorCore": true
+    "tensorCore": true,
+    "server": true
   },
   {
     "id": "nvidia-a100x",
@@ -1544,7 +1570,8 @@
     "fp32Tflops": 19.91,
     "memType": "HBM2e",
     "tdpW": 300,
-    "tensorCore": true
+    "tensorCore": true,
+    "server": true
   },
   {
     "id": "nvidia-a40-pcie",
@@ -1557,7 +1584,8 @@
     "fp32Tflops": 37.42,
     "memType": "GDDR6",
     "tdpW": 300,
-    "tensorCore": true
+    "tensorCore": true,
+    "server": true
   },
   {
     "id": "nvidia-a30-pcie",
@@ -1570,7 +1598,8 @@
     "fp32Tflops": 10.32,
     "memType": "HBM2e",
     "tdpW": 165,
-    "tensorCore": true
+    "tensorCore": true,
+    "server": true
   },
   {
     "id": "nvidia-a30x",
@@ -1583,7 +1612,8 @@
     "fp32Tflops": 10.32,
     "memType": "HBM2e",
     "tdpW": 230,
-    "tensorCore": true
+    "tensorCore": true,
+    "server": true
   },
   {
     "id": "nvidia-a16-pcie",
@@ -1596,7 +1626,8 @@
     "fp32Tflops": 4.49,
     "memType": "GDDR6",
     "tdpW": 250,
-    "tensorCore": true
+    "tensorCore": true,
+    "server": true
   },
   {
     "id": "nvidia-a10-pcie",
@@ -1609,7 +1640,8 @@
     "fp32Tflops": 31.24,
     "memType": "GDDR6",
     "tdpW": 150,
-    "tensorCore": true
+    "tensorCore": true,
+    "server": true
   },
   {
     "id": "nvidia-a10g",
@@ -1622,7 +1654,8 @@
     "fp32Tflops": 31.52,
     "memType": "GDDR6",
     "tdpW": 150,
-    "tensorCore": true
+    "tensorCore": true,
+    "server": true
   },
   {
     "id": "nvidia-a10m",
@@ -1648,7 +1681,8 @@
     "fp32Tflops": 2.5,
     "memType": "GDDR6",
     "tdpW": 50,
-    "tensorCore": false
+    "tensorCore": false,
+    "server": true
   },
   {
     "id": "nvidia-t1000-8-gb",
@@ -1661,7 +1695,8 @@
     "fp32Tflops": 2.5,
     "memType": "GDDR6",
     "tdpW": 50,
-    "tensorCore": false
+    "tensorCore": false,
+    "server": true
   },
   {
     "id": "nvidia-t600",
@@ -1674,7 +1709,8 @@
     "fp32Tflops": 1.71,
     "memType": "GDDR6",
     "tdpW": 40,
-    "tensorCore": false
+    "tensorCore": false,
+    "server": true
   },
   {
     "id": "nvidia-t400",
@@ -1687,7 +1723,8 @@
     "fp32Tflops": 1.09,
     "memType": "GDDR6",
     "tdpW": 30,
-    "tensorCore": false
+    "tensorCore": false,
+    "server": true
   },
   {
     "id": "nvidia-t400-4-gb",
@@ -1700,7 +1737,8 @@
     "fp32Tflops": 1.09,
     "memType": "GDDR6",
     "tdpW": 30,
-    "tensorCore": false
+    "tensorCore": false,
+    "server": true
   },
   {
     "id": "nvidia-jetson-t4000",
@@ -1713,7 +1751,8 @@
     "fp32Tflops": 7.76,
     "memType": "LPDDR5X",
     "tdpW": 40,
-    "tensorCore": true
+    "tensorCore": true,
+    "mobile": true
   },
   {
     "id": "nvidia-jetson-t5000",
@@ -1726,7 +1765,8 @@
     "fp32Tflops": 12.93,
     "memType": "LPDDR5X",
     "tdpW": 40,
-    "tensorCore": true
+    "tensorCore": true,
+    "mobile": true
   },
   {
     "id": "nvidia-rtx-pro-2000-blackwell",
@@ -1830,7 +1870,8 @@
     "fp32Tflops": 126,
     "memType": "GDDR7",
     "tdpW": 600,
-    "tensorCore": true
+    "tensorCore": true,
+    "server": true
   },
   {
     "id": "nvidia-rtx-pro-6000d-blackwell",
@@ -2025,7 +2066,8 @@
     "fp32Tflops": 10,
     "memType": "GDDR6",
     "tdpW": 150,
-    "tensorCore": true
+    "tensorCore": true,
+    "server": true
   },
   {
     "id": "nvidia-quadro-rtx-4000",

@@ -219,6 +219,20 @@ Three sources feed the estimator:
 
 **FP16 rate caveat for data-center cards**: the CSV reports shader-rate FP16 (often 1:64 of tensor-core rate) for H100 / B200. Preprocessor uses `max(BF16, FP16 if ≥ 1.5× FP32, FP32 × 2)` to approximate the tensor-core path, but the result is conservative for Hopper/Blackwell — users can override with `--gpu-flops`.
 
+### Mobile / server group split
+
+Preset entries carry optional `mobile`, `server`, and `desktop` boolean flags. The UI partitions each vendor's dropdown into up to three `<optgroup>` sections: `"<Vendor>"` (desktop), `"<Vendor> (mobile)"`, and `"<Vendor> (server)"`. Empty groups are suppressed. Apple CPUs are all tagged `mobile` and shown under a single `"Apple (mobile)"` group.
+
+Detection by source:
+- **AMD CPU**: CSV `Form Factor` column — contains "Laptop" or "Handheld" → `mobile: true`; contains "Desktop" or "Boxed" → eligible for main group; both present → `desktop: true` too (dual-form-factor, appears in both groups). Server CSV entries and EPYC → `server: true`.
+- **AMD GPU (consumer)**: name matches `/\d[MS]\b/` or `/(Mobile)/` → `mobile: true`.
+- **AMD GPU (PRO/FirePro)**: CSV `GPU Form Factor` column contains "MXM", or name matches `/\d[MS]\b/` or `/(Mobile)/` → `mobile: true`.
+- **AMD GPU (Instinct)**: all tagged `server: true`.
+- **NVIDIA GPU**: bare letter+number data center names (`A100`, `H100`, `B200`, `L40`, `T4`, etc., excluding `RTX`/`Quadro`/`GeForce`/`Titan` prefixes and M-suffix like `A10M`) → `server: true`. "Tesla" prefix or "Server" in name → `server: true`. Jetson (LPDDR5X memType) → `mobile: true`.
+- **Intel GPU**: Arc name matches `/\dM\b/` (A370M, A550M, etc.) → `mobile: true`.
+- **Intel CPU**: Xeon entries tagged `server: true` (hand-curated).
+- **Apple CPU**: all tagged `mobile: true` (hand-curated).
+
 ### Example model and quantization refrence code
 
 The directores `ik_llama.cpp/` `llama.cpp/` and `ik_llama.cpp/` contain variants of the llama.cpp inference engine

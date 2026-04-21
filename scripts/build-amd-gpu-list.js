@@ -175,6 +175,8 @@ const seen = new Set();
     if (seen.has(id)) continue;
     seen.add(id);
 
+    const isMobile = /\d[MS]\b/i.test(name) || /\(Mobile\)/i.test(name);
+
     out.push({
       id, vendor: 'AMD', name,
       year,
@@ -185,6 +187,7 @@ const seen = new Set();
       memType,
       tdpW: tdp,
       tensorCore: false,
+      ...(isMobile ? { mobile: true } : {}),
     });
   }
 }
@@ -233,6 +236,7 @@ const seen = new Set();
       memType,
       tdpW: tdp,
       tensorCore: hasTensorCore,
+      server: true,
     });
   }
 }
@@ -269,6 +273,9 @@ const seen = new Set();
     if (seen.has(id)) continue;
     seen.add(id);
 
+    const gpuFF = (r['GPU Form Factor'] || '').toLowerCase();
+    const isMobile = /\d[MS]\b/i.test(name) || /\(Mobile\)/i.test(name) || /mxm/i.test(gpuFF);
+
     out.push({
       id, vendor: 'AMD', name,
       year,
@@ -279,6 +286,7 @@ const seen = new Set();
       memType,
       tdpW: tdp,
       tensorCore: false,
+      ...(isMobile ? { mobile: true } : {}),
     });
   }
 }

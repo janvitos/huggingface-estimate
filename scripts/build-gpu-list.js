@@ -180,6 +180,16 @@ for (let r = 1; r < rows.length; r++) {
   if (seen.has(id)) continue;
   seen.add(id);
 
+  const flags = {};
+  if (vendor === 'NVIDIA') {
+    if (/^(A|H|B|L|T|P|V)\d{1,4}/i.test(name) && !/^(RTX|GeForce|Quadro|Titan)/i.test(name) && !/\dM$/i.test(name)) flags.server = true;
+    if (/^Tesla\b/i.test(name)) flags.server = true;
+    if (/\bServer\b/i.test(name)) flags.server = true;
+    if (memType === 'LPDDR5X') flags.mobile = true;
+  } else if (vendor === 'Intel') {
+    if (/\dM\b/.test(name)) flags.mobile = true;
+  }
+
   out.push({
     id, vendor, name,
     year: year ?? null,
@@ -190,6 +200,7 @@ for (let r = 1; r < rows.length; r++) {
     memType,
     tdpW: tdp,
     tensorCore: hasTensor,
+    ...flags,
   });
 }
 

@@ -310,10 +310,21 @@ function addPreset(rec, isServer) {
 
   const label = `${name} (${zenLabel(zen.zen)}, ${cores}C)`;
 
+  const formFactor = (rec['Form Factor'] || '').toLowerCase();
+  const hasLaptop = /laptop/i.test(formFactor);
+  const hasHandheld = /handheld/i.test(formFactor);
+  const hasDesktop = /desktop|boxed/i.test(formFactor);
+
+  const flags = {};
+  if (isServer || /epyc/i.test(nameLower)) flags.server = true;
+  else if (hasLaptop || hasHandheld) flags.mobile = true;
+  if (hasDesktop && (hasLaptop || hasHandheld)) flags.desktop = true;
+
   out.push({
     id, name: label, vendor: 'AMD',
     fp16Tflops,
     defaultRamBwGBps: ramBW,
+    ...flags,
   });
 }
 
