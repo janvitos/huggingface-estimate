@@ -316,7 +316,8 @@ function leadingDenseActivations(meta, batchSize) {
   const expertFF = getMeta(meta, `${arch}.expert_feed_forward_length`);
   const leadingDense = getMeta(meta, `${arch}.leading_dense_block_count`);
   const denseBytes = leadingDense * batchSize * (n_embd + n_ff) * 4;
-  const moeBytes = (n_layer - leadingDense) * batchSize * (n_embd + expertUsedCount * (expertFF || 1)) * 4;
+  const moeFF = (expertUsedCount > 0 && expertFF > 0) ? expertUsedCount * expertFF : n_ff;
+  const moeBytes = (n_layer - leadingDense) * batchSize * (n_embd + moeFF) * 4;
   return {
     totalBytes: denseBytes + moeBytes,
     perLayerBytes: 0,
