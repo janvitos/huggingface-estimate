@@ -1,9 +1,10 @@
 // Reads gpu_1986-2026.csv and emits per-vendor GPU preset JSON files used by
 // the performance estimator. Also produces a merged gpu-data.json for
-// backward compat. Filters to NVIDIA 1000-series+, AMD RX 5000+/MI,
-// Intel Arc. AMD entries are built separately from first-party AMD CSVs
-// via build-amd-gpu-list.js. Apple M-series entries are built from
-// apple_silicon_specs.csv via build-apple-presets.js and merged below.
+// backward compat. Filters to NVIDIA 1000-series+.
+// AMD entries are built separately from first-party AMD CSVs via
+// build-amd-gpu-list.js. Intel entries are built from first-party Intel CSVs
+// via build-intel-gpu-presets.js. Apple M-series entries are built from
+// apple_silicon_specs.csv via build-apple-presets.js. All are merged below.
 //
 // Run once after updating the CSV: `node scripts/build-gpu-list.js`
 
@@ -106,12 +107,7 @@ function acceptNvidia(name, year) {
 }
 
 // AMD entries are built from first-party AMD CSVs via build-amd-gpu-list.js.
-// Intel: Arc A-series / B-series discrete.
-function acceptIntel(name) {
-  if (!name) return false;
-  if (/\bMobile\b/i.test(name)) return false;
-  return /Arc [AB]\d{3,4}/i.test(name);
-}
+// Intel entries are built from first-party Intel CSVs via build-intel-gpu-presets.js.
 
 // ── Main ──
 const text = readFileSync(CSV_PATH, 'utf8');
@@ -146,7 +142,6 @@ for (let r = 1; r < rows.length; r++) {
 
   let vendor;
   if (brand === 'NVIDIA' && acceptNvidia(name, year ?? 0)) vendor = 'NVIDIA';
-  else if (brand === 'Intel' && acceptIntel(name)) vendor = 'Intel';
   else continue;
 
   const vramGB = parseMemSize(row[COL['Memory__Memory Size']]);
@@ -181,8 +176,6 @@ for (let r = 1; r < rows.length; r++) {
     if (/^Tesla\b/i.test(name)) flags.server = true;
     if (/\bServer\b/i.test(name)) flags.server = true;
     if (memType === 'LPDDR5X' || /\bMobile\b/i.test(name) || (/\bMax-Q\b/i.test(name) && !/\bRTX PRO\b/i.test(name))) flags.mobile = true;
-  } else if (vendor === 'Intel') {
-    if (/\dM\b/.test(name)) flags.mobile = true;
   }
 
   out.push({
@@ -280,7 +273,15 @@ function sortKey(g) {
       const famRank = { B: 0, A: 1 }[m[1].toUpperCase()];
       return [0, famRank, -parseInt(m[2], 10), ...variantRank(g.name), g.name];
     }
-    return [1, g.name];
+    if (/Arc Pro/i.test(g.name)) {
+      const pm = g.name.match(/Arc Pro ([AB])(\d{2,3})/i);
+      if (pm) {
+        const famRank = { B: 2, A: 3 }[pm[1].toUpperCase()];
+        return [0, famRank, -parseInt(pm[2], 10), g.name];
+      }
+    }
+    if (/iGPU/i.test(g.name)) return [1, -(g.fp16Tflops || 0), g.name];
+    return [2, g.name];
   }
   if (g.vendor === 'Apple') {
     const genOrder = { M5: 0, M4: 1, M3: 2, M2: 3, M1: 4 };
@@ -311,6 +312,17 @@ function cmp(a, b) {
   }
   return 0;
 }
+// ── Merge Intel entries from first-party CSV build ──
+const INTEL_DATA_PATH = join(ROOT, 'intel-gpu-presets.json');
+try {
+  const intelData = JSON.parse(readFileSync(INTEL_DATA_PATH, 'utf8'));
+  for (const g of intelData) out.push(g);
+  console.error(`Merged ${intelData.length} Intel GPUs from ${INTEL_DATA_PATH}`);
+} catch (e) {
+  if (e.code !== 'ENOENT') throw e;
+  console.error(`Warning: ${INTEL_DATA_PATH} not found, skipping Intel merge. Run scripts/build-intel-gpu-presets.js first.`);
+}
+
 // ── Merge AMD entries from first-party CSV build ──
 const AMD_DATA_PATH = join(ROOT, 'amd-gpu-presets.json');
 try {
@@ -339,7 +351,6 @@ const byVendor = out.reduce((a, g) => (a[g.vendor] = (a[g.vendor] || 0) + 1, a),
 
 const vendorFiles = {
   NVIDIA: join(ROOT, 'nvidia-gpu-presets.json'),
-  Intel: join(ROOT, 'intel-gpu-presets.json'),
 };
 for (const [vendor, path] of Object.entries(vendorFiles)) {
   const entries = out.filter(g => g.vendor === vendor);
