@@ -1010,6 +1010,7 @@ gpuPresetEl.addEventListener('change', () => {
     gpuFlopsEl.value = g.fp16Tflops;
     gpuBwEl.value = g.memBwGBps;
     if (g.vramGB) vramEl.value = g.vramGB;
+    if (g.vendor === 'Apple' && ssCpu) ssCpu.setSelected('apple-unified-memory');
   }
   if (currentMetadata) renderResults();
 });
