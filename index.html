@@ -1185,7 +1185,7 @@ function renderResults() {
     moeOffloadGroup.classList.remove('hidden');
     $('#moeTotalExperts').textContent = moe.expertCount;
     $('#moeActiveExperts').textContent = `${moe.expertUsedCount} per token`;
-    $('#moeTotalParams').textContent = `${formatElements(moe.totalParams)} params (${formatBytes(moe.totalWeightBytes)} weights)`;
+    $('#moeTotalParams').textContent = `${formatElements(moe.totalModelParams)} params (${formatBytes(moe.totalWeightBytes)} weights)`;
     $('#moeActiveParams').textContent = `${formatElements(moe.expertParams)} params (${formatBytes(moe.activeExpertWeightBytes)} weights)`;
     $('#moeRouterSize').textContent = formatBytes(moe.routerBytes);
   } else {

@@ -348,7 +348,7 @@ function buildMoe(meta, tensorInfos, {
     expertCount, expertUsedCount,
     expertWeightBytes, routerBytes, sharedBytes,
     totalWeightBytes: expertWeightBytes + routerBytes + sharedBytes,
-    totalParams: sumElems(tensorInfos),
+    totalModelParams: sumElems(tensorInfos),
     expertParams: sumElems(expertTensors),
     activeExpertWeightBytes: perExpertWeightBytes * expertUsedCount,
   };
