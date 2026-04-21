@@ -1348,9 +1348,9 @@ function renderResults() {
   const showVramBar = vramGB > 0;
 
   if (!showVramBar) {
-    fitPanel.style.display = 'none';
+    fitPanel.classList.add('hidden');
   } else {
-    fitPanel.style.display = '';
+    fitPanel.classList.remove('hidden');
 
     // Use computeOffloadSplit to determine actual layer distribution
     const mmProjActBytes = currentMmProjInfo ? (currentMmProjInfo.weightBytes + (currentMmProjInfo.perImageActBytes || 0)) : 0;
