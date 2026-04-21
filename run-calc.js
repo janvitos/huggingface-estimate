@@ -211,7 +211,7 @@ function resolveDevice(args) {
 }
 
 // ── Main calculation for a single model ──
-async function calcModel(repo) {
+async function calcModel(repo, args) {
   const result = await resolveHFModel(repo);
 
   if (!result.url) {
@@ -474,7 +474,7 @@ async function runBatch(batchFile) {
     const repo = lines[i];
     process.stderr.write(`[${i + 1}/${lines.length}] ${repo}... `);
     try {
-      const result = await calcModel(repo);
+      const result = await calcModel(repo, args);
       console.error(`done (${result.arch}, ${result.weightBytesFormatted})`);
       results.push({ success: true, data: result });
     } catch (err) {
@@ -494,7 +494,7 @@ if (args.batch) {
     process.exit(1);
   });
 } else if (args.repo) {
-  calcModel(args.repo).then(result => {
+  calcModel(args.repo, args).then(result => {
     console.log(JSON.stringify(result, null, 2));
   }).catch(err => {
     console.error(`Error: ${err.message}`);
