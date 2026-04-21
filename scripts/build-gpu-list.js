@@ -93,10 +93,10 @@ function slug(vendor, name) {
 // ── Vendor-specific eligibility ──
 // NVIDIA: GeForce GTX 10-series+ (Pascal, 2016+), RTX 20-50, data-center
 // (A/H/B/L/T-series), Quadro/Tesla where the model number indicates Pascal+.
-// Skip mobile Max-Q/Mobile variants (different perf envelope).
+// Include mobile/Max-Q laptop variants (flagged as mobile for UI grouping).
 function acceptNvidia(name, year) {
   if (!name || !year || year < 2016) return false;
-  if (/\b(Max-Q|Mobile|Mining)\b/i.test(name)) return false;
+  if (/\bMining\b/i.test(name)) return false;
   if (/\b(CMP|DRIVE|GRID|PG\d+)\b/i.test(name)) return false;
   if (/GeForce (GTX|RTX) [1-5]\d{3}/i.test(name)) return true;
   if (/\b(A|H|B|L|T)\d{2,4}([A-Z]| |$)/.test(name)) return true;          // A100, H100, L40, T4, B200
@@ -146,7 +146,8 @@ for (let r = 1; r < rows.length; r++) {
   const brand = row[COL.Brand];
   const name = row[COL.Name];
   if (!brand || !name) continue;
-  const year = parseYear(row[COL['Graphics Card__Release Date']]);
+  const year = parseYear(row[COL['Graphics Card__Release Date']])
+    || parseYear(row[COL['Mobile Graphics__Release Date']] || '');
 
   let vendor;
   if (brand === 'NVIDIA' && acceptNvidia(name, year ?? 0)) vendor = 'NVIDIA';
@@ -182,10 +183,10 @@ for (let r = 1; r < rows.length; r++) {
 
   const flags = {};
   if (vendor === 'NVIDIA') {
-    if (/^(A|H|B|L|T|P|V)\d{1,4}/i.test(name) && !/^(RTX|GeForce|Quadro|Titan)/i.test(name) && !/\dM$/i.test(name)) flags.server = true;
+    if (/^(A|H|B|L|T|P|V)\d{1,4}/i.test(name) && !/^(RTX|GeForce|Quadro|Titan)/i.test(name) && !/\dM$/i.test(name) && !/\b(Max-Q|Mobile)\b/i.test(name)) flags.server = true;
     if (/^Tesla\b/i.test(name)) flags.server = true;
     if (/\bServer\b/i.test(name)) flags.server = true;
-    if (memType === 'LPDDR5X') flags.mobile = true;
+    if (memType === 'LPDDR5X' || /\bMobile\b/i.test(name) || (/\bMax-Q\b/i.test(name) && !/\bRTX PRO\b/i.test(name))) flags.mobile = true;
   } else if (vendor === 'Intel') {
     if (/\dM\b/.test(name)) flags.mobile = true;
   }
