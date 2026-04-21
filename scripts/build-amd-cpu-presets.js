@@ -212,12 +212,6 @@ function detectZen(rec, isServer) {
   return { zen: 1, flopsPerCycle: 8 };
 }
 
-function parseTDP(rec) {
-  const s = rec['Default TDP'] || '';
-  const m = s.match(/([\d.]+)\s*W/i);
-  return m ? parseFloat(m[1]) : null;
-}
-
 function computeRamBW(rec, isServer) {
   if (isServer) {
     const directBW = parseGBps(rec['Per Socket Mem BW']);
