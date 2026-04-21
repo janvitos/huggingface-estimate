@@ -193,7 +193,9 @@ function detectZen(rec, isServer) {
     return { zen: 3, flopsPerCycle: 16 };
   }
   if (tech.includes('7nm')) {
+    // Zen 3 / Zen 3+: 5xxx (Vermeer/Cezanne), 7xxx Barcelo-R (7030 series)
     if (/ryzen.*[579].*5\d{3}/i.test(name) || /ryzen.*5\d{3}/i.test(name)) return { zen: 3, flopsPerCycle: 16 };
+    if (/ryzen.*(7[357]3\d|743\d)/i.test(name)) return { zen: 3, flopsPerCycle: 16 };
     return { zen: 2, flopsPerCycle: 16 };
   }
   if (tech.includes('14nm') || tech.includes('12nm') || tech.includes('28nm')) return { zen: 1, flopsPerCycle: 8 };

@@ -852,7 +852,7 @@
   },
   {
     "id": "ryzen-7-7730u",
-    "name": "Ryzen 7 7730U (Zen 2, 8C)",
+    "name": "Ryzen 7 7730U (Zen 3, 8C)",
     "vendor": "AMD",
     "fp16Tflops": 0.58,
     "defaultRamBwGBps": 51.2,
@@ -1163,7 +1163,7 @@
   },
   {
     "id": "ryzen-7-pro-7730u",
-    "name": "Ryzen 7 PRO 7730U (Zen 2, 8C)",
+    "name": "Ryzen 7 PRO 7730U (Zen 3, 8C)",
     "vendor": "AMD",
     "fp16Tflops": 0.58,
     "defaultRamBwGBps": 51.2,
@@ -1918,7 +1918,7 @@
   },
   {
     "id": "ryzen-5-7430u",
-    "name": "Ryzen 5 7430U (Zen 2, 6C)",
+    "name": "Ryzen 5 7430U (Zen 3, 6C)",
     "vendor": "AMD",
     "fp16Tflops": 0.41,
     "defaultRamBwGBps": 51.2,
@@ -1941,7 +1941,7 @@
   },
   {
     "id": "ryzen-5-7530u",
-    "name": "Ryzen 5 7530U (Zen 2, 6C)",
+    "name": "Ryzen 5 7530U (Zen 3, 6C)",
     "vendor": "AMD",
     "fp16Tflops": 0.43,
     "defaultRamBwGBps": 51.2,
@@ -2320,7 +2320,7 @@
   },
   {
     "id": "ryzen-5-pro-7530u",
-    "name": "Ryzen 5 PRO 7530U (Zen 2, 6C)",
+    "name": "Ryzen 5 PRO 7530U (Zen 3, 6C)",
     "vendor": "AMD",
     "fp16Tflops": 0.43,
     "defaultRamBwGBps": 51.2,
@@ -2855,7 +2855,7 @@
   },
   {
     "id": "ryzen-3-7330u",
-    "name": "Ryzen 3 7330U (Zen 2, 4C)",
+    "name": "Ryzen 3 7330U (Zen 3, 4C)",
     "vendor": "AMD",
     "fp16Tflops": 0.28,
     "defaultRamBwGBps": 51.2,
@@ -3071,7 +3071,7 @@
   },
   {
     "id": "ryzen-3-pro-7330u",
-    "name": "Ryzen 3 PRO 7330U (Zen 2, 4C)",
+    "name": "Ryzen 3 PRO 7330U (Zen 3, 4C)",
     "vendor": "AMD",
     "fp16Tflops": 0.28,
     "defaultRamBwGBps": 51.2,
