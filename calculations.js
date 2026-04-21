@@ -1222,10 +1222,13 @@ export function estimatePerformance({
     // unmodeled — caller surfaces this via the bottleneck label below.
   }
 
-  // Output layer (lm_head + embeddings): assume GPU residence — llama.cpp
-  // pins these when any offload is requested.
-  const tOutDec = Math.max((2 * outputElems) / gpuFlops, outputBytes / gpuBw);
-  const tOutPre = Math.max((2 * outputElems * ctx) / gpuFlops, outputBytes / gpuBw);
+  // Output layer (lm_head + embeddings): GPU when any offload requested,
+  // CPU when fully CPU (llama.cpp runs output on CPU in that case).
+  const hasGpuOffload = nGpuLayers + nHybridLayers > 0;
+  const outFlops = hasGpuOffload ? gpuFlops : (cpuAvailable ? cpuFlops : gpuFlops);
+  const outBw = hasGpuOffload ? gpuBw : (cpuAvailable ? cpuBw : gpuBw);
+  const tOutDec = Math.max((2 * outputElems) / outFlops, outputBytes / outBw);
+  const tOutPre = Math.max((2 * outputElems * ctx) / outFlops, outputBytes / outBw);
 
   // Boundary transfer: whenever the activation vector crosses the GPU↔CPU bus
   // it pays a PCIe-limited hop. Full CPU spill: 1 hop at the boundary. Hybrid
