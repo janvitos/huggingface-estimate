@@ -195,11 +195,13 @@ The available builders:
 
 | Builder | Use for |
 |---------|---------|
+| `noKvCache` | Encoder-only architectures with no KV cache (gemma-embedding, t5encoder, modern-bert) |
 | `llamaKvCache` | Standard (and GQA) KV cache |
 | `buildKvCache(meta, ctx, kK, kV, opts)` | ISWA, per-layer filter, effective-layer override, etc. |
 | `mlaKvCache` | DeepSeek2 / GLM-DSA latent attention |
 | `buildActivations` | Standard transformer activations (incl. MoE-gated) |
 | `leadingDenseActivations` | MoE with `leading_dense_block_count` |
+| `mlaActivations` | MLA attention (non-MoE): uses `q_lora_rank + kv_lora_rank` instead of full `n_embd` |
 | `buildMoe(meta, ti, predicates)` | MoE tensor accounting with custom `isExpert`/`isRouter`/`isShared` |
 | `llamaMoe` | Default MoE with `_exps.` / `ffn_gate_inp` / `_shexp.|_chexp.` |
 | `moeNoShared` | MoE with no shared experts |
@@ -221,9 +223,10 @@ All fields optional. Compose them in the handler: `kvCache: (m, c, kK, kV) => bu
 | Option | Use for |
 |--------|---------|
 | `iswa: true` | Read `sliding_window` / `sliding_window_pattern`, shrink SWA layer contexts |
+| `denseFirst: true` | With ISWA, first layer in each period is dense (smallthinker pattern; matches llama.cpp `set_swa_pattern(N, true)`) |
 | `swaPeriodDefault: N` | Fallback SWA period when metadata doesn't supply one (gpt-oss: 2, llama4: 4, gemma3n: 5) |
 | `swaDefault: N` | Fallback `sliding_window` value (llama4: 8192) |
-| `effectiveLayers(meta, n_block)` | Override iteration count (gemma4 `shared_kv_layers`, gemma3n `layer_kv_from_start`) |
+| `effectiveLayers(meta, n_block)` | Override iteration count (gemma4 `shared_kv_layers`, gemma3n `layer_kv_from_start`, bailingmoe2 `nextn_predict_layers`) |
 | `layerFilter(i)` | Skip layers (qwen35moe keeps only every `full_attention_interval`-th layer) |
 
 Per-layer `head_count_kv == 0` is treated as "no KV cache on this layer" across all options. This handles hybrid recurrent/attention (`lfm2_moe`, `nemotron_h_moe`) without extra config — just declare `kvCache: llamaKvCache`.
@@ -232,7 +235,8 @@ Per-layer `head_count_kv == 0` is treated as "no KV cache on this layer" across 
 
 Architectures with attention shapes that don't match `buildActivations` or `leadingDenseActivations` keep inline handlers:
 
-- **deepseek2**: MLA attention output uses `q_lora_rank + kv_lora_rank`, not `n_embd`.
+- **deepseek2**: MLA + MoE with `leading_dense_block_count`. Dense layers use `n_ff`, MoE layers use `expertUsedCount * expertFF`.
+- **mistral4**: Same pattern as deepseek2 — MLA + MoE with `leading_dense_block_count`.
 - **qwen35moe**: residual + shared + routed experts — `2 * n_embd + expertUsedCount * expertFF`.
 - **glm-dsa**: adds `indexerTopK * 256` for the sparse indexer state.
 - **gemma3n**: multiplies `n_embd` by `altup_num_inputs` (typically 4).

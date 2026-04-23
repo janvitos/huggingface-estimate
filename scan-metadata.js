@@ -41,7 +41,7 @@ const CALC_KEYS = new Set([
   'expert_shared_feed_forward_length',
   'leading_dense_block_count',
   // ISWA / hybrid patterns
-  'attention.full_attention_interval',
+  'full_attention_interval',
   'attention.shared_kv_layers',
   'attention.layer_kv_from_start',
   // Next-token prediction layers (reduce KV layers)
@@ -118,8 +118,6 @@ const NON_SIZING_KEYS = new Set([
   'ssm.time_step_rank',
   'ssm.inner_size',
   'ssm.dt_rank',
-  // Repeat-alternate for Qwen3.5 MoE-style DeltaNet layers
-  'full_attention_interval',
 ]);
 
 const GENERAL_KEYS = new Set([
