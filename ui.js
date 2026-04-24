@@ -288,9 +288,6 @@ function renderModelInfo(arch, handler, isMoe, isMla, moe, ctx_len, vocab) {
   if (ctx_len && ctx_len > 0) {
     contextLenEl.max = ctx_len;
     $('#ctxMaxLabel').textContent = `(max ${formatElements(BigInt(ctx_len))})`;
-    if (parseInt(contextLenEl.value, 10) > ctx_len) {
-      contextLenEl.value = ctx_len;
-    }
   } else {
     $('#ctxMaxLabel').textContent = '';
   }
@@ -693,7 +690,12 @@ function renderResults() {
   const arch = getModelArch(currentMetadata);
   const handler = getArchHandler(arch);
 
-  const ctxSize = parseInt(contextLenEl.value, 10) || 4096;
+  const modelCtxLen = getMeta(currentMetadata, `${arch}.context_length`);
+  let ctxSize = parseInt(contextLenEl.value, 10) || 4096;
+  if (modelCtxLen > 0 && ctxSize > modelCtxLen) {
+    ctxSize = modelCtxLen;
+    contextLenEl.value = modelCtxLen;
+  }
   const batchSize = parseInt(batchSizeEl.value, 10) || 1;
   const kvTypeK = isNaN(kvTypeKEl.value) ? kvTypeKEl.value : parseInt(kvTypeKEl.value, 10);
   const kvTypeV = isNaN(kvTypeVEl.value) ? kvTypeVEl.value : parseInt(kvTypeVEl.value, 10);
@@ -729,10 +731,9 @@ function renderResults() {
 
   const isMoe = (moe !== null);
   const isMla = handler.categories.includes('mla');
-  const ctx_len = getMeta(currentMetadata, `${arch}.context_length`);
   const vocab = getMeta(currentMetadata, `${arch}.vocab_size`);
 
-  renderModelInfo(arch, handler, isMoe, isMla, moe, ctx_len, vocab);
+  renderModelInfo(arch, handler, isMoe, isMla, moe, modelCtxLen, vocab);
   renderMoeSection(moe, cpuMoe, nCpuMoe);
   renderWeightsTable(weights);
   renderKvCache(kv, kvTypeK, kvTypeV, isMla, arch);
