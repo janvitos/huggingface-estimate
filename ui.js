@@ -443,7 +443,14 @@ function renderMemoryPanel({ weights, moe, kv, acts, memBreakdown, mmProjBytes, 
     $('#vramRouterRow').style.display = 'none';
   }
   $('#vramWeightsSize').textContent = `${formatBytes(nonMoEWeightBytes)} (${vramPct(nonMoEWeightBytes)})`;
-  $('#vramKVSize').textContent = `${formatBytes(kv.totalBytes)} (${vramPct(kv.totalBytes)})`;
+  const kvOnlyBytes = kv.bytesK + kv.bytesV;
+  $('#vramKVSize').textContent = `${formatBytes(kvOnlyBytes)} (${vramPct(kvOnlyBytes)})`;
+  if (kv.bytesRecurrent > 0) {
+    $('#vramRecurrentRow').style.display = '';
+    $('#vramRecurrentSize').textContent = `${formatBytes(kv.bytesRecurrent)} (${vramPct(kv.bytesRecurrent)})`;
+  } else {
+    $('#vramRecurrentRow').style.display = 'none';
+  }
   $('#vramActSize').textContent = `${formatBytes(acts.totalBytes)} (${vramPct(acts.totalBytes)})`;
   if (currentMmProjInfo && mmProjDevice === 'vram') {
     $('#vramMmProjRow').style.display = '';

@@ -341,12 +341,14 @@ function formatWeights(weightInfo) {
 }
 
 function formatKvCache(kvCache, args) {
-  return {
+  const result = {
     kvCache: {
       bytesK: kvCache.bytesK,
       bytesKFormatted: formatBytes(kvCache.bytesK),
       bytesV: kvCache.bytesV,
       bytesVFormatted: formatBytes(kvCache.bytesV),
+      bytesRecurrent: kvCache.bytesRecurrent,
+      bytesRecurrentFormatted: formatBytes(kvCache.bytesRecurrent),
       totalBytes: kvCache.totalBytes,
       totalBytesFormatted: formatBytes(kvCache.totalBytes),
       layers: kvCache.layers,
@@ -358,6 +360,7 @@ function formatKvCache(kvCache, args) {
       kvTypeV: QUANT_NAMES[args.kvTypeV] || String(args.kvTypeV),
     },
   };
+  return result;
 }
 
 function formatActivations(activations) {

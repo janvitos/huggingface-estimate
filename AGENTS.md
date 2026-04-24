@@ -112,6 +112,7 @@ ID 200 (TQ3_0, KV-only, 0.4375 BPE) is unique to the tq3 fork and does not colli
 - `formatBytes(bytes)` / `formatElements(n)` — human-readable formatters (KiB/MiB/GiB/TiB, K/M/B/T).
 - `TQ3_FORK_BPE` — BPE override map for tq3 fork collision resolution.
 - `TQ3_QUANT_NAMES` — display name overrides for tq3 fork types.
+- `calcRecurrentState(metadata, nSeqMax=1)` — computes SSM/recurrent state memory for hybrid architectures (qwen35, qwen35moe). Returns `{ convStateBytes, ssmStateBytes, totalBytes, recurrentLayers, n_embd_r, n_embd_s }` or `null` if the architecture has no SSM hparams. State is F32, indexed by sequence count (not context length). Matches llama.cpp's `n_embd_r()` and `n_embd_s()` in `llama-hparams.cpp`.
 
 ## Utility exports from `parsing.js`
 

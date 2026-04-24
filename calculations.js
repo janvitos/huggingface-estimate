@@ -826,6 +826,23 @@ export function calcWeightSize(tensorInfos) {
   return { total, byQuant };
 }
 
+export function calcRecurrentState(metadata, nSeqMax = 1) {
+  const arch = getModelArch(metadata);
+  const n_layer = getMeta(metadata, `${arch}.block_count`);
+  const ssm_d_conv = getMeta(metadata, `${arch}.ssm.conv_kernel`);
+  const ssm_d_inner = getMeta(metadata, `${arch}.ssm.inner_size`);
+  const ssm_d_state = getMeta(metadata, `${arch}.ssm.state_size`);
+  const ssm_n_group = getMeta(metadata, `${arch}.ssm.group_count`);
+  if (!ssm_d_conv || !ssm_d_inner || !ssm_d_state || !ssm_n_group) return null;
+  const interval = getMeta(metadata, `${arch}.full_attention_interval`) || 4;
+  const n_recurrent = n_layer - Math.floor(n_layer / interval);
+  const n_embd_r = (ssm_d_conv - 1) * (ssm_d_inner + 2 * ssm_n_group * ssm_d_state);
+  const n_embd_s = ssm_d_state * ssm_d_inner;
+  const convStateBytes = n_recurrent * n_embd_r * nSeqMax * 4;
+  const ssmStateBytes = n_recurrent * n_embd_s * nSeqMax * 4;
+  return { convStateBytes, ssmStateBytes, totalBytes: convStateBytes + ssmStateBytes, recurrentLayers: n_recurrent, n_embd_r, n_embd_s };
+}
+
 export function calcKVCache(metadata, ctxSize, kvTypeK, kvTypeV) {
   const arch = getModelArch(metadata);
   if (arch.startsWith('mamba') || arch.startsWith('rwkv')) {
@@ -833,7 +850,9 @@ export function calcKVCache(metadata, ctxSize, kvTypeK, kvTypeV) {
   }
   const handler = getArchHandler(arch);
   const result = handler.kvCache(metadata, ctxSize, kvTypeK, kvTypeV);
-  result.totalBytes = result.bytesK + result.bytesV;
+  const recurrent = calcRecurrentState(metadata);
+  result.bytesRecurrent = recurrent ? recurrent.totalBytes : 0;
+  result.totalBytes = result.bytesK + result.bytesV + result.bytesRecurrent;
   return result;
 }
 
@@ -1058,7 +1077,9 @@ export function calcPerLayerFootprint(metadata, tensorInfos, kv, moe) {
     layerActiveElems[i] = layerNonExpertElems[i] + layerExpertElemsActive[i];
   }
 
-  const kvBytesPerLayer = nLayers > 0 && kv ? kv.totalBytes / nLayers : 0;
+  const kvOnlyBytes = kv ? (kv.bytesK + kv.bytesV) : 0;
+  const kvBytesPerLayer = nLayers > 0 ? kvOnlyBytes / nLayers : 0;
+  const recurrentBytesPerLayer = kv && kv.bytesRecurrent ? kv.bytesRecurrent / nLayers : 0;
 
   return {
     nLayers,
@@ -1067,7 +1088,7 @@ export function calcPerLayerFootprint(metadata, tensorInfos, kv, moe) {
     layerNonExpertBytes, layerNonExpertElems,
     layerExpertBytesFull, layerExpertElemsFull,
     layerExpertBytesActive, layerExpertElemsActive,
-    kvBytesPerLayer,
+    kvBytesPerLayer, recurrentBytesPerLayer,
     outputBytes, outputElems,
     hasExperts: expertCount > 0,
   };
@@ -1101,7 +1122,7 @@ export function computeOffloadSplit({
   cpuMoe = false, nCpuMoe = 0,
 }) {
   const {
-    nLayers, kvBytesPerLayer, outputBytes,
+    nLayers, kvBytesPerLayer, recurrentBytesPerLayer, outputBytes,
     layerNonExpertBytes, layerExpertBytesFull,
   } = footprint;
 
@@ -1115,8 +1136,9 @@ export function computeOffloadSplit({
     return false;
   };
 
-  const gpuNeed = (i) => layerNonExpertBytes[i] + layerExpertBytesFull[i] + kvBytesPerLayer;
-  const hybridNeed = (i) => layerNonExpertBytes[i] + kvBytesPerLayer;
+  const rB = recurrentBytesPerLayer || 0;
+  const gpuNeed = (i) => layerNonExpertBytes[i] + layerExpertBytesFull[i] + kvBytesPerLayer + rB;
+  const hybridNeed = (i) => layerNonExpertBytes[i] + kvBytesPerLayer + rB;
 
   // Manual --ngl override: last N layers to GPU (back-to-front), then apply
   // expert placement overrides for cpuMoe / nCpuMoe.
@@ -1253,15 +1275,16 @@ export function calcActualMemory({ vramBytes, footprint, activationBytes = 0, nL
   let actualVram = footprint.outputBytes + activationBytes;
   let actualRam = 0;
 
+  const rB = footprint.recurrentBytesPerLayer || 0;
   for (let i = 0; i < split.modes.length; i++) {
     const mode = split.modes[i];
     if (mode === 'gpu') {
-      actualVram += footprint.layerNonExpertBytes[i] + footprint.layerExpertBytesFull[i] + footprint.kvBytesPerLayer;
+      actualVram += footprint.layerNonExpertBytes[i] + footprint.layerExpertBytesFull[i] + footprint.kvBytesPerLayer + rB;
     } else if (mode === 'hybrid') {
-      actualVram += footprint.layerNonExpertBytes[i] + footprint.kvBytesPerLayer;
+      actualVram += footprint.layerNonExpertBytes[i] + footprint.kvBytesPerLayer + rB;
       actualRam += footprint.layerExpertBytesFull[i];
     } else {
-      actualRam += footprint.layerNonExpertBytes[i] + footprint.layerExpertBytesFull[i] + footprint.kvBytesPerLayer;
+      actualRam += footprint.layerNonExpertBytes[i] + footprint.layerExpertBytesFull[i] + footprint.kvBytesPerLayer + rB;
     }
   }
 
