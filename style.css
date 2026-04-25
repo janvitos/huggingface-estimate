@@ -23,7 +23,7 @@ body {
 }
 
 .container {
-  max-width: 1100px;
+  max-width: 1280px;
   margin: 0 auto;
   padding: 24px 16px;
 }
@@ -42,7 +42,7 @@ h1 {
 
 .grid {
   display: grid;
-  grid-template-columns: 340px 1fr;
+  grid-template-columns: 463px 1fr;
   gap: 20px;
 }
 
@@ -54,7 +54,7 @@ h1 {
   overflow-y: auto;
 }
 
-@media (max-width: 800px) {
+@media (max-width: 960px) {
   .grid { grid-template-columns: 1fr; }
   .grid > div:first-child {
     position: static;
