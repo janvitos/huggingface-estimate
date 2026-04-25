@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import { resolveHFModel, parseGGUF, buildResolveUrl, GGMLQuantizationType, KV_VALID_QUANTS } from './parsing.js';
 import {
   getArchHandler,

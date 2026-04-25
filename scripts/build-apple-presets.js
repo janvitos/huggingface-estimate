@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 // Reads apple_silicon_macs.csv and emits apple-cpu-presets.json and
 // apple-gpu-presets.json. One GPU preset per Mac model/variant row.
 // CPU preset is a single "Apple Unified Memory" entry (no CPU offloading on Apple).

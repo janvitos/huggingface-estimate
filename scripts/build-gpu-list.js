@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 // Reads gpu_1986-2026.csv and emits per-vendor GPU preset JSON files used by
 // the performance estimator. Also produces a merged gpu-data.json for
 // backward compat. Filters to NVIDIA 1000-series+.

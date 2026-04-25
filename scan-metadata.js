@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import { resolveHFModel, parseGGUF, buildResolveUrl } from './parsing.js';
 import {
   getArchHandler,
