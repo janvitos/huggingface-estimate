@@ -73,6 +73,16 @@ const allWordsSearchFilter = (opt, q) => {
   return words.every(w => t.includes(w));
 };
 
+const allowSpaceInSearch = (ss) => {
+  const input = ss?.render?.content?.search?.input;
+  if (!input) return;
+  const orig = input.onkeydown;
+  input.onkeydown = function (e) {
+    if (e.key === ' ') return true;
+    return orig ? orig.call(this, e) : true;
+  };
+};
+
 function populateQuantSelect(sel, defaultType) {
   const forkQuantSet = new Set(KV_FORK_GROUPS.flatMap(g => g.quants));
   for (const q of KV_VALID_QUANTS) {
@@ -136,6 +146,7 @@ function populateGpuSelect() {
     addOptgroup(gpuPresetEl, `${vendor} (server)`, server, fmt);
   }
   ssGpu = new SlimSelect({ select: '#gpuPreset', settings: { showSearch: true, searchPlaceholder: 'Search GPU...' }, events: { searchFilter: allWordsSearchFilter } });
+  allowSpaceInSearch(ssGpu);
 }
 
 function populateCpuSelect() {
@@ -155,6 +166,7 @@ function populateCpuSelect() {
     addOptgroup(cpuPresetEl, `${vendor} (server)`, server, fmt);
   }
   ssCpu = new SlimSelect({ select: '#cpuPreset', settings: { showSearch: true, searchPlaceholder: 'Search CPU...' }, events: { searchFilter: allWordsSearchFilter } });
+  allowSpaceInSearch(ssCpu);
 }
 
 gpuPresetEl.addEventListener('change', () => {
