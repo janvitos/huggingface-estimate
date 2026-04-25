@@ -101,16 +101,23 @@ const isMmProjName = (f) => MMPROJ_RE.test(f.replace(/^.*\//, ''));
  * @returns {Promise<{ url: string | null, ggufFiles?: string[], mmProjFiles?: string[] }>}
  */
 export async function resolveHFModel(path) {
+  // HF page URL → extract owner/model slug and fall through to the API lookup
+  if (path.match(/^https?:\/\/huggingface\.co\//i)) {
+    const match = path.match(/^https?:\/\/huggingface\.co\/([^/?#]+\/[^/?#]+)/i);
+    if (match) {
+      const slug = match[1];
+      const fileInfo = path.match(/[?&]show_file_info=([^&#]+)/);
+      if (fileInfo && fileInfo[1].toLowerCase().endsWith('.gguf')) {
+        return { url: `https://huggingface.co/${slug}/resolve/main/${decodeURIComponent(fileInfo[1])}` };
+      }
+      path = slug;
+    }
+  }
+
   // Direct URL to a .gguf file → normalize /blob/ → /resolve/, strip query/fragment
   if (path.match(/^https?:\/\/.*\.gguf/i)) {
     const url = path.replace(/\/blob\//, '/resolve/').replace(/[?#].*$/, '');
     return { url };
-  }
-
-  // HF page URL → extract owner/model slug and fall through to the API lookup
-  if (path.match(/^https?:\/\/huggingface\.co\//i)) {
-    const match = path.match(/^https?:\/\/huggingface\.co\/([^/]+\/[^/]+)/i);
-    if (match) path = match[1];
   }
 
   const apiRes = await fetch(`https://huggingface.co/api/models/${path}`, {
@@ -161,7 +168,7 @@ export async function resolveHFModel(path) {
 export function buildResolveUrl(path, filename) {
   let modelPath = path;
   if (path.match(/^https?:\/\/huggingface\.co\//i)) {
-    const match = path.match(/^https?:\/\/huggingface\.co\/([^/]+\/[^/]+)/i);
+    const match = path.match(/^https?:\/\/huggingface\.co\/([^/?#]+\/[^/?#]+)/i);
     if (match) modelPath = match[1];
   }
   return `https://huggingface.co/${modelPath}/resolve/main/${filename}`;
